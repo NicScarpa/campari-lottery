@@ -163,7 +163,17 @@ async function generatePDF(tokens: { token_code: string }[], res: express.Respon
 const app = express();
 const prisma = new PrismaClient();
 
-app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
+// === MODIFICA QUI ===
+// Ho aggiunto l'URL di Vercel alla lista delle origini permesse
+app.use(cors({
+  origin: [
+    'http://localhost:3000',               // Per quando sviluppi sul tuo computer
+    'https://campari-lottery.vercel.app'   // Per il sito online
+  ],
+  credentials: true
+}));
+// ====================
+
 app.use(express.json());
 app.use(cookieParser());
 
