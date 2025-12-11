@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Promotion {
+  id                  String    @id @default(cuid())
+  name                String
+  status              String    @default("ACTIVE")
+  start_datetime      DateTime
+  end_datetime        DateTime
+  planned_token_count Int
+  tokens              Token[]
+  prizes              PrizeType[]
+  customers           Customer[]
+}
+
+model PrizeType {
+  id              String    @id @default(cuid())
+  promotion_id    String
+  promotion       Promotion @relation(fields: [promotion_id], references: [id])
+  name            String
+  initial_stock   Int
+  remaining_stock Int
+  assignments     PrizeAssignment[]
+}
+
+model Token {
+  id             String    @id @default(cuid())
+  promotion_id   String
+  promotion      Promotion @relation(fields: [promotion_id], references: [id])
+  token_code     String    @unique
+  status         String    @default("AVAILABLE")
+  play           Play?
+  
+  // Campo aggiunto per tracciamento
+  usedAt         DateTime? 
+}
+
+model Customer {
+  id             String    @id @default(cuid())
+  promotion_id   String
+  promotion      Promotion @relation(fields: [promotion_id], references: [id])
+  first_name     String
+  last_name      String
+  phone_number   String
+  total_plays    Int       @default(0)
+  last_play_at   DateTime?
+  plays          Play[]
+  
+  // --- NUOVI CAMPI PRIVACY (STEP J.1) ---
+  accepted_terms_at    DateTime  @default(now()) // Timestamp accettazione obbligatoria (Privacy + Regolamento)
+  marketing_consent_at DateTime?                 // Timestamp consenso facoltativo (Marketing)
+   
+  @@unique([promotion_id, phone_number])
+}
+
+model Play {
+  id             String    @id @default(cuid())
+  promotion_id   String    
+  customer_id    String
+  customer       Customer @relation(fields: [customer_id], references: [id])
+  token_id       String    @unique
+  token          Token     @relation(fields: [token_id], references: [id])
+  is_winner      Boolean
+  created_at     DateTime @default(now())
+}
+
+model PrizeAssignment {
+  id                   String    @id @default(cuid())
+  prize_type_id        String
+  prize_type           PrizeType @relation(fields: [prize_type_id], references: [id])
+  prize_code           String    @unique
+  assigned_at          DateTime  @default(now())
+  redeemed_at          DateTime?
+  redeemed_by_staff_id String?
+  redeemed_by_staff    StaffUser? @relation(fields: [redeemed_by_staff_id], references: [id])
+}
+
+enum UserRole {
+  STAFF
+  ADMIN
+}
+
+model StaffUser {
+  id             String    @id @default(cuid())
+  username       String    @unique
+  display_name   String
+  role           UserRole
+  password_hash  String    
+  created_at     DateTime  @default(now())
+   
+  redeemedPrizes PrizeAssignment[]
+}
