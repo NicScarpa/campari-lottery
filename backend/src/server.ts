@@ -16,14 +16,16 @@ const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-in-prod';
 const APP_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
+// Configurazione CORS fondamentale per i cookie cross-domain
 app.use(cors({
   origin: [APP_URL, 'http://localhost:3000'],
-  credentials: true
+  credentials: true // Permette al frontend di inviare/ricevere cookie
 }));
+
 app.use(express.json());
 app.use(cookieParser());
 
-// --- HEALTH CHECK (Required for Railway) ---
+// --- HEALTH CHECK ---
 app.get('/health', (req, res) => {
   res.status(200).send('OK');
 });
@@ -45,10 +47,13 @@ app.post('/api/auth/login', async (req, res) => {
       { expiresIn: '8h' }
     );
 
+    // --- FIX COOKIE PER RAILWAY (CROSS-DOMAIN) ---
+    const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT_NAME !== undefined;
+
     res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      httpOnly: true, // Non accessibile via JS (sicurezza XSS)
+      secure: true,   // Obbligatorio per sameSite: 'none' (Railway usa HTTPS)
+      sameSite: 'none', // Permette il cookie tra frontend e backend su domini diversi
       maxAge: 8 * 3600 * 1000 // 8 hours
     });
 
@@ -60,7 +65,11 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 app.post('/api/auth/logout', (req, res) => {
-  res.clearCookie('token');
+  res.clearCookie('token', {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none'
+  });
   res.json({ success: true });
 });
 
@@ -189,7 +198,6 @@ app.post('/api/customer/play', async (req: any, res: any) => {
 
       // D. Logic for Winner / Loser
       if (wonPrizeType) {
-        // Atomic update: only update if remaining_stock > 0
         const updateResult = await tx.prizeType.updateMany({
           where: { 
             id: wonPrizeType.id, 
@@ -201,12 +209,9 @@ app.post('/api/customer/play', async (req: any, res: any) => {
         });
 
         if (updateResult.count > 0) {
-          // Success: stock reserved -> WINNER
           isWinner = true;
           const uniqueCode = `WIN-${token_code}-${Date.now().toString().slice(-4)}`;
 
-          // FIX: Creiamo PRIMA la Play e POI il PrizeAssignment collegato
-          // Questo risolve l'errore di tipi Annidati (Nested Writes)
           const playRecord = await tx.play.create({
             data: {
               promotion_id: promotionId,
@@ -223,16 +228,14 @@ app.post('/api/customer/play', async (req: any, res: any) => {
               customer_id: customer_id,
               token_id: token.id,
               prize_code: uniqueCode,
-              play_id: playRecord.id // Colleghiamo usando l'ID appena creato
+              play_id: playRecord.id 
             },
             include: {
               prize_type: true
-              // play: true // Non necessario includerlo qui per il return
             }
           });
 
         } else {
-          // Failed to reserve stock -> LOSER (Fallback)
           isWinner = false;
           await tx.play.create({
             data: {
@@ -244,7 +247,6 @@ app.post('/api/customer/play', async (req: any, res: any) => {
           });
         }
       } else {
-        // Lost by probability -> LOSER
         await tx.play.create({
           data: {
             promotion_id: promotionId,
@@ -255,7 +257,6 @@ app.post('/api/customer/play', async (req: any, res: any) => {
         });
       }
 
-      // E. Mark Token as Used
       await tx.token.update({
         where: { id: token.id },
         data: { 
@@ -264,14 +265,13 @@ app.post('/api/customer/play', async (req: any, res: any) => {
         }
       });
 
-      // F. Increment Customer Plays
       await tx.customer.update({
         where: { id: customer_id },
         data: { total_plays: { increment: 1 } }
       });
 
       return { isWinner, prizeAssignment };
-    }); // End Transaction
+    }); 
 
     res.json(result);
 
@@ -345,7 +345,6 @@ app.get('/api/leaderboard/:promotionId', async (req, res) => {
 
 // --- ADMIN API (Protected) ---
 
-// Generate Tokens PDF
 app.post('/api/admin/generate-tokens', authenticateToken, authorizeRole('admin'), async (req, res) => {
   const { promotionId, count, prefix } = req.body;
 
