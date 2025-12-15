@@ -35,7 +35,7 @@ app.use(cors({
   origin: [
     APP_URL,
     'http://localhost:3000',
-    'https://frontend-camparino-week.up.railway.app'  // Railway frontend
+    'https://new-frontend-camparino-week.up.railway.app'  // NEW Railway frontend domain
   ],
   credentials: true
 }));
