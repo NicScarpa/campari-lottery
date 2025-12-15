@@ -5,15 +5,15 @@ import { ProbabilityEngine } from './services/ProbabilityEngine';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import cookieParser from 'cookie-parser';
-import { authenticateToken, authorizeRole, AuthRequest } from './middlewares/authMiddleware';
+import { authenticateToken, authorizeRole } from './middlewares/authMiddleware';
 import QRCode from 'qrcode';
 import PDFDocument from 'pdfkit';
 
 const app = express();
 const prisma = new PrismaClient();
+
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-in-prod';
-// IMPORTANT: Set this env var in Railway to your deployed frontend URL (e.g. https://campari-lottery.vercel.app)
 const APP_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
 app.use(cors({
@@ -111,7 +111,6 @@ app.post('/api/customer/register', async (req, res) => {
   }
 
   try {
-    // FIX: Update timestamps for consents if provided
     const customer = await prisma.customer.upsert({
       where: {
         promotion_id_phone_number: {
@@ -122,10 +121,8 @@ app.post('/api/customer/register', async (req, res) => {
       update: {
         first_name: firstName,
         last_name: lastName,
-        // Update consents only if they are true (re-consent) or keep existing
         consent_marketing: consentMarketing,
         marketing_consent_at: consentMarketing ? new Date() : undefined,
-        // Terms are mandatory for play usually
         consent_terms: consentTerms,
         terms_consent_at: consentTerms ? new Date() : undefined
       },
@@ -153,20 +150,15 @@ app.post('/api/customer/play', async (req: any, res: any) => {
   const { promotion_id, token_code, customer_id } = req.body;
 
   try {
-    // FIX: Use a transaction to ensure atomic operations (prevent overselling)
     const result = await prisma.$transaction(async (tx) => {
-      // A. Re-validate token locked for update if possible (Prisma doesn't support SELECT FOR UPDATE easily yet without raw query, 
-      // but inside transaction with strict isolation levels it handles concurrency well enough for this scale. 
-      // For higher robustness on Postgres, we rely on atomic updates below).
-      
+      // A. Re-validate token
       const token = await tx.token.findUnique({
         where: { token_code },
-        include: { promotion: true } // Need promotion data?
+        include: { promotion: true }
       });
 
       if (!token) throw new Error('TOKEN_NOT_FOUND');
       if (token.status !== 'available') throw new Error('TOKEN_USED');
-      // FIX: Integrity check
       if (token.promotion_id !== Number(promotion_id)) throw new Error('TOKEN_MISMATCH');
 
       const promotionId = token.promotion_id;
@@ -195,7 +187,7 @@ app.post('/api/customer/play', async (req: any, res: any) => {
       let prizeAssignment = null;
       let isWinner = false;
 
-      // D. If winner, try to decrement stock ATOMICALLY
+      // D. Logic for Winner / Loser
       if (wonPrizeType) {
         // Atomic update: only update if remaining_stock > 0
         const updateResult = await tx.prizeType.updateMany({
@@ -209,9 +201,20 @@ app.post('/api/customer/play', async (req: any, res: any) => {
         });
 
         if (updateResult.count > 0) {
-          // Success: stock reserved
+          // Success: stock reserved -> WINNER
           isWinner = true;
-          const uniqueCode = `WIN-${token_code}-${Date.now().toString().slice(-4)}`; // Simple unique code
+          const uniqueCode = `WIN-${token_code}-${Date.now().toString().slice(-4)}`;
+
+          // FIX: Creiamo PRIMA la Play e POI il PrizeAssignment collegato
+          // Questo risolve l'errore di tipi Annidati (Nested Writes)
+          const playRecord = await tx.play.create({
+            data: {
+              promotion_id: promotionId,
+              token_id: token.id,
+              customer_id: customer_id,
+              is_winner: true
+            }
+          });
           
           prizeAssignment = await tx.prizeAssignment.create({
             data: {
@@ -220,27 +223,17 @@ app.post('/api/customer/play', async (req: any, res: any) => {
               customer_id: customer_id,
               token_id: token.id,
               prize_code: uniqueCode,
-              // We need to create the Play first or connect it? 
-              // Prisma cycle dependency: PrizeAssignment needs play_id, Play needs prize_assignment_id (optional).
-              // Let's create Play first.
-              play: {
-                create: {
-                  promotion_id: promotionId,
-                  token_id: token.id,
-                  customer_id: customer_id,
-                  is_winner: true,
-                }
-              }
+              play_id: playRecord.id // Colleghiamo usando l'ID appena creato
             },
             include: {
-              prize_type: true,
-              play: true
+              prize_type: true
+              // play: true // Non necessario includerlo qui per il return
             }
           });
+
         } else {
-          // Failed to reserve stock (race condition hit 0), user loses effectively
+          // Failed to reserve stock -> LOSER (Fallback)
           isWinner = false;
-          // Just create a losing play
           await tx.play.create({
             data: {
               promotion_id: promotionId,
@@ -251,7 +244,7 @@ app.post('/api/customer/play', async (req: any, res: any) => {
           });
         }
       } else {
-        // Lost by probability
+        // Lost by probability -> LOSER
         await tx.play.create({
           data: {
             promotion_id: promotionId,
@@ -294,16 +287,16 @@ app.post('/api/customer/play', async (req: any, res: any) => {
 // 4. Leaderboard (Live)
 app.get('/api/leaderboard/:promotionId', async (req, res) => {
   const { promotionId } = req.params;
-  const { customerId } = req.query; // Optional: to show "you are here"
+  const { customerId } = req.query;
 
   try {
-    const topN = 10; // Make configurable if needed
+    const topN = 10;
 
     const leaderboard = await prisma.customer.findMany({
       where: { promotion_id: Number(promotionId) },
       orderBy: [
         { total_plays: 'desc' },
-        { updated_at: 'asc' } // Tie-breaker: who reached score first
+        { updated_at: 'asc' }
       ],
       take: topN,
       select: {
@@ -325,8 +318,6 @@ app.get('/api/leaderboard/:promotionId', async (req, res) => {
 
     let myStats = null;
     if (customerId) {
-        // If user is not in top N, fetch their rank
-        // Calculating rank in SQL is expensive, for small lottery just fetch count > myPlays
         const me = await prisma.customer.findUnique({ where: { id: Number(customerId) } });
         if (me) {
             const betterPlayers = await prisma.customer.count({
@@ -359,7 +350,6 @@ app.post('/api/admin/generate-tokens', authenticateToken, authorizeRole('admin')
   const { promotionId, count, prefix } = req.body;
 
   try {
-    // 1. Generate unique codes (Collision check loop simplified for demo)
     const codesToCreate = [];
     for (let i = 0; i < count; i++) {
         const code = (prefix || '') + Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -370,33 +360,25 @@ app.post('/api/admin/generate-tokens', authenticateToken, authorizeRole('admin')
         });
     }
 
-    // 2. Insert DB (skip duplicates if any collision)
-    // Prisma createMany skipDuplicates is handy
     await prisma.token.createMany({
         data: codesToCreate,
         skipDuplicates: true
     });
 
-    // 3. Fetch ACTUAL created tokens to ensure we print valid ones
-    // We fetch the latest N tokens for this promotion.
-    // NOTE: This assumes no one else is generating tokens at the exact same millisecond.
     const tokens = await prisma.token.findMany({
         where: { promotion_id: Number(promotionId) },
         orderBy: { created_at: 'desc' },
         take: Number(count)
     });
 
-    // 4. Generate PDF
     const doc = new PDFDocument();
     
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'attachment; filename=tokens.pdf');
     doc.pipe(res);
 
-    // Simple grid layout
     let x = 50, y = 50;
     for (const t of tokens) {
-        // FIX: QR URL must be full URL
         const playUrl = `${APP_URL}/play?token=${t.token_code}`;
         const qrData = await QRCode.toDataURL(playUrl);
         
@@ -422,14 +404,48 @@ app.post('/api/admin/generate-tokens', authenticateToken, authorizeRole('admin')
   }
 });
 
-// Basic CRUD for promotions/prizes omitted for brevity but follows standard patterns
-
 // --- STAFF API ---
 app.post('/api/staff/redeem', authenticateToken, async (req, res) => {
     const { prizeCode } = req.body;
-    // Implementation of redemption logic...
-    // (Ensure you check unique constraints and update redeemed_at)
-    res.json({ success: true, message: "Premio riscattato" }); // Placeholder
+    
+    if (!prizeCode) return res.status(400).json({ error: 'Codice mancante' });
+
+    try {
+        const assignment = await prisma.prizeAssignment.findUnique({
+            where: { prize_code: prizeCode },
+            include: { prize_type: true, customer: true }
+        });
+
+        if (!assignment) {
+            return res.status(404).json({ error: 'Codice premio non trovato o non valido' });
+        }
+
+        if (assignment.redeemed_at) {
+            return res.status(400).json({ 
+                error: 'Premio già ritirato', 
+                redeemedAt: assignment.redeemed_at,
+                redeemedBy: assignment.redeemed_by_staff_id 
+            });
+        }
+
+        const updated = await prisma.prizeAssignment.update({
+            where: { id: assignment.id },
+            data: {
+                redeemed_at: new Date(),
+            }
+        });
+
+        res.json({ 
+            success: true, 
+            prize: assignment.prize_type.name,
+            customer: `${assignment.customer.first_name} ${assignment.customer.last_name}`,
+            redeemedAt: updated.redeemed_at
+        });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Errore durante il riscatto' });
+    }
 });
 
 app.listen(PORT, () => {
