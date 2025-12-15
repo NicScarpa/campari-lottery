@@ -7,8 +7,7 @@ import StatsCard from './components/StatsCard';
 import PrizeManager from './components/PrizeManager'; 
 import PromotionSelector from './components/PromotionSelector'; 
 import PlayLogViewer from './components/PlayLogViewer'; 
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+import { getApiUrl } from '../../lib/api'; // <--- IMPORTANTE
 
 export interface Promotion {
     id: string;
@@ -40,7 +39,8 @@ export default function AdminDashboardPage() {
 
     const handleLogout = async () => {
         setLoading(true);
-        await fetch(`${API_URL}/api/auth/logout`, { 
+        // FIX: Uso getApiUrl
+        await fetch(getApiUrl('api/auth/logout'), { 
             method: 'POST',
             credentials: 'include' 
         });
@@ -49,7 +49,8 @@ export default function AdminDashboardPage() {
 
     const fetchPromotions = useCallback(async () => {
         try {
-            const res = await fetch(`${API_URL}/api/promotions/list`, {
+            // FIX: Uso getApiUrl
+            const res = await fetch(getApiUrl('api/promotions/list'), {
                 method: 'GET',
                 credentials: 'include'
             });
@@ -72,7 +73,8 @@ export default function AdminDashboardPage() {
 
     const checkSession = async () => {
         try {
-            const res = await fetch(`${API_URL}/api/auth/me`, {
+            // FIX: Uso getApiUrl
+            const res = await fetch(getApiUrl('api/auth/me'), {
                 method: 'GET',
                 credentials: 'include' 
             });
@@ -94,7 +96,8 @@ export default function AdminDashboardPage() {
         setIsCreating(true);
 
         try {
-            const res = await fetch(`${API_URL}/api/promotions/create`, {
+            // FIX: Uso getApiUrl
+            const res = await fetch(getApiUrl('api/promotions/create'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
@@ -212,7 +215,6 @@ export default function AdminDashboardPage() {
 
     return (
         <div className="min-h-screen bg-gray-100 p-4 md:p-8">
-            {/* HEADER RESPONSIVE: Colonna su mobile, Riga su desktop */}
             <header className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
                 <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 text-center md:text-left">
                     Pannello Amministrativo
@@ -236,7 +238,6 @@ export default function AdminDashboardPage() {
                  />
             </div>
 
-            {/* GRIGLIA RESPONSIVE: 1 colonna su mobile, 3 su desktop (lg) */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 
                 <div className="lg:col-span-1 space-y-6">

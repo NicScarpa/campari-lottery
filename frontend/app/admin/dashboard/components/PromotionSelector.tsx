@@ -2,9 +2,8 @@
 
 import { useState } from 'react';
 import React from 'react';
-import { Promotion } from '../page'; // Importiamo l'interfaccia Promotion definita in page.tsx
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+import { Promotion } from '../page'; 
+import { getApiUrl } from '../../../lib/api'; // <--- IMPORTANTE
 
 interface PromotionSelectorProps {
     promotions: Promotion[];
@@ -39,7 +38,6 @@ export default function PromotionSelector({
     const [newStartDatetime, setNewStartDatetime] = useState('');
     const [newEndDatetime, setNewEndDatetime] = useState('');
 
-    // Sincronizza lo stato locale
     React.useEffect(() => {
         setName(currentPromotion.name);
         setPlannedTokenCount(currentPromotion.planned_token_count);
@@ -50,7 +48,7 @@ export default function PromotionSelector({
         setErrorMessage('');
     }, [currentPromotion]);
 
-    // --- FUNZIONI LOGICHE (Invariate) ---
+    // --- FUNZIONI LOGICHE ---
     const handleCreatePromotion = async (e: React.FormEvent) => {
         e.preventDefault();
         setSuccessMessage(''); setErrorMessage('');
@@ -61,7 +59,8 @@ export default function PromotionSelector({
         }
 
         try {
-            const res = await fetch(`${API_URL}/api/promotions/create`, {
+            // FIX: Uso getApiUrl
+            const res = await fetch(getApiUrl('api/promotions/create'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
@@ -89,7 +88,8 @@ export default function PromotionSelector({
         setSuccessMessage(''); setErrorMessage('');
         
         try {
-            const res = await fetch(`${API_URL}/api/promotions/update/${currentPromotion.id}`, {
+            // FIX: Uso getApiUrl
+            const res = await fetch(getApiUrl(`api/promotions/update/${currentPromotion.id}`), {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
@@ -117,7 +117,8 @@ export default function PromotionSelector({
         if (!confirm(`ELIMINARE PERMANENTEMENTE "${currentPromotion.name}"?`)) return;
 
         try {
-            const res = await fetch(`${API_URL}/api/promotions/delete/${currentPromotion.id}`, {
+            // FIX: Uso getApiUrl
+            const res = await fetch(getApiUrl(`api/promotions/delete/${currentPromotion.id}`), {
                 method: 'DELETE',
                 credentials: 'include',
             });
@@ -138,7 +139,7 @@ export default function PromotionSelector({
             {successMessage && <div className="p-3 mb-3 text-sm text-green-700 bg-green-100 rounded-lg">{successMessage}</div>}
             {errorMessage && <div className="p-3 mb-3 text-sm text-red-700 bg-red-100 rounded-lg">{errorMessage}</div>}
             
-            {/* HEADER RESPONSIVE: Stack verticale su mobile, orizzontale su desktop */}
+            {/* HEADER */}
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 pb-4 border-b border-gray-200 gap-4">
                  
                  {/* GRUPPO SELETTORE */}
@@ -171,7 +172,7 @@ export default function PromotionSelector({
                      </span>
                  </div>
                  
-                 {/* GRUPPO PULSANTI - Grid su mobile, Flex su desktop */}
+                 {/* GRUPPO PULSANTI */}
                  <div className="grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-row gap-2 w-full lg:w-auto">
                       <button 
                          onClick={() => { setIsCreating(!isCreating); setIsEditing(false); }}
