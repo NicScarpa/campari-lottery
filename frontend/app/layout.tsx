@@ -10,7 +10,7 @@ const josefin = Josefin_Sans({
 
 export const metadata: Metadata = {
   title: "Campari Soda Instant Win",
-  description: "Concorso a premi Campari Soda - Weiss Café",
+  description: "Concorso a premi Campari Soda - Weiss Café - v0.2.5",
 };
 
 export default function RootLayout({
