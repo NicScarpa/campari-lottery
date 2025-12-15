@@ -32,7 +32,11 @@ if (JWT_SECRET === 'super-secret-key-change-in-prod' || JWT_SECRET === 'chiave_s
 
 // Configurazione CORS
 app.use(cors({
-  origin: [APP_URL, 'http://localhost:3000'],
+  origin: [
+    APP_URL,
+    'http://localhost:3000',
+    'https://frontend-camparino-week.up.railway.app'  // Railway frontend
+  ],
   credentials: true
 }));
 
