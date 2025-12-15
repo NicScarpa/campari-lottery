@@ -17,12 +17,21 @@ export default function LoginPage() {
   useEffect(() => {
     const checkSession = async () => {
       try {
-        // MODIFICA: Uso getApiUrl
+        // Check if token exists in localStorage
+        const token = localStorage.getItem('admin_token');
+        if (!token) {
+          setLoading(false);
+          return;
+        }
+
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
 
         const res = await fetch(getApiUrl('api/auth/me'), {
           method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
           credentials: 'include',
           signal: controller.signal
         });
@@ -35,17 +44,17 @@ export default function LoginPage() {
           if (data.user.role === 'admin') {
             router.replace('/admin/dashboard');
           } else {
-            router.replace('/staff'); // Presumo che la dashboard staff sia su /staff
+            router.replace('/staff');
           }
         } else {
-          // Se 401/403/errore, mostra il form.
+          // Token non valido, rimuovilo e mostra il form
+          localStorage.removeItem('admin_token');
           setLoading(false);
         }
       } catch (err) {
-        // Errore di connessione (server spento o errore di rete)
         console.error("Errore di connessione alla API:", err);
+        localStorage.removeItem('admin_token');
         setLoading(false);
-        // Potresti voler mostrare un messaggio di errore di connessione qui, ma per ora lo lasciamo silenzioso.
       }
     };
 
@@ -72,11 +81,15 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (res.ok) {
-        // Login riuscito! Reindirizza solo dopo l'impostazione del cookie
-        if (data.role === 'admin') { // Ho corretto da data.user.role a data.role in base al server.ts
-          router.replace('/admin/dashboard'); 
+        // Login riuscito! Salva il token in localStorage
+        if (data.token) {
+          localStorage.setItem('admin_token', data.token);
+        }
+
+        if (data.role === 'admin') {
+          router.replace('/admin/dashboard');
         } else {
-          router.replace('/staff'); 
+          router.replace('/staff');
         }
       } else {
         setError(data.error || 'Credenziali non valide');
