@@ -6,16 +6,8 @@ const nextConfig: NextConfig = {
     // Use timestamp to force new build ID each time
     return `build-${Date.now()}`;
   },
-  // Add custom webpack config to change output file names
-  webpack: (config, { isServer }) => {
-    if (!isServer) {
-      // Force new chunk names by adding timestamp
-      const timestamp = Date.now();
-      config.output.filename = `static/chunks/[name]-${timestamp}.js`;
-      config.output.chunkFilename = `static/chunks/[name]-${timestamp}.js`;
-    }
-    return config;
-  },
+  // Empty turbopack config to silence the warning
+  turbopack: {},
 };
 
 export default nextConfig;
