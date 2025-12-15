@@ -35,7 +35,8 @@ app.use(cors({
   origin: [
     APP_URL,
     'http://localhost:3000',
-    'https://new-frontend-camparino-week.up.railway.app'  // NEW Railway frontend domain
+    'https://new-frontend-camparino-week.up.railway.app',  // Railway frontend domain
+    'https://campari-lottery-git-main-nicola-scarpas-projects.vercel.app'  // Vercel frontend domain
   ],
   credentials: true
 }));
