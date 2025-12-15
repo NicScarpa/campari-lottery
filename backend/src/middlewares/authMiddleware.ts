@@ -1,51 +1,57 @@
-// src/middlewares/authMiddleware.ts
-
 import { Request, Response, NextFunction } from 'express';
-import jwt, { JwtPayload, VerifyErrors } from 'jsonwebtoken'; // AGGIUNTO VerifyErrors
+import jwt, { JwtPayload } from 'jsonwebtoken';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-in-prod';
 
 // Definiamo il tipo dell'utente che sarà attaccato alla Request
-// Assumiamo che il payload del token contenga queste proprietà
 export interface UserPayload extends JwtPayload {
   id: number;
   username: string;
-  role: 'ADMIN' | 'STAFF';
+  role: string;
 }
 
 // Estendiamo l'interfaccia Request di Express per includere l'utente
 export interface AuthRequest extends Request {
-  user?: UserPayload; 
+  user?: UserPayload;
 }
 
 // ------------------------------------------------------------------
-// Middleware per l'autenticazione tramite cookie JWT
+// Middleware per l'autenticazione
 // ------------------------------------------------------------------
 export const authenticateToken = (
-  req: Request,
+  req: AuthRequest, // Usiamo AuthRequest qui per TypeScript
   res: Response,
   next: NextFunction
 ) => {
-  // 1. Leggi il token dal cookie (impostato dal frontend con credentials: 'include')
-  const token = req.cookies.token;
+  // 1. Cerca il token nei cookie O nell'header Authorization (Bearer token)
+  // Questo è utile se decidi di testare le API con Postman o se il frontend cambia strategia
+  const token = req.cookies?.token || req.headers['authorization']?.split(' ')[1];
 
   if (!token) {
-    // Se il cookie non è presente, l'utente non è loggato
-    return res.status(401).json({ error: 'Token non trovato o sessione scaduta.' });
+    return res.status(401).json({ error: 'Access denied: Token not found' });
   }
 
-  // 2. Verifica il token
-  // Legge JWT_SECRET dal .env, se non presente userà il fallback
-  const secret = process.env.JWT_SECRET || 'chiave_segreta_super_sicura';
-
-  // *** CORREZIONE TS7006: Tipizzazione di err e user ***
-  jwt.verify(token, secret, (err: VerifyErrors | null, user: any) => {
-    if (err) {
-      // Se il token è scaduto o non è valido (firma errata)
-      return res.status(403).json({ error: 'Token non valido o scaduto.' });
-    }
-
-    // 3. Se il token è valido, attacca i dati dell'utente alla richiesta
-    // Assumiamo che il payload sia corretto (UserPayload)
-    (req as AuthRequest).user = user as UserPayload;
+  try {
+    // 2. Verifica il token
+    const verified = jwt.verify(token, JWT_SECRET) as UserPayload;
+    
+    // 3. Attacca l'utente alla richiesta
+    req.user = verified;
     next();
-  });
+  } catch (err) {
+    res.status(403).json({ error: 'Invalid or expired token' });
+  }
+};
+
+// ------------------------------------------------------------------
+// Middleware per l'autorizzazione basata sui ruoli (NUOVO)
+// ------------------------------------------------------------------
+export const authorizeRole = (role: string) => {
+  return (req: AuthRequest, res: Response, next: NextFunction) => {
+    // Se l'utente è admin, passa sempre. Altrimenti controlla il ruolo specifico.
+    if (!req.user || (req.user.role !== role && req.user.role !== 'admin')) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+    next();
+  };
 };
