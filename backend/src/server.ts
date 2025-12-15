@@ -5,7 +5,7 @@ import { ProbabilityEngine } from './services/ProbabilityEngine';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import cookieParser from 'cookie-parser';
-import { authenticateToken, authorizeRole } from './middlewares/authMiddleware';
+import { authenticateToken, authorizeRole, authenticateCustomer, AuthRequest } from './middlewares/authMiddleware';
 import QRCode from 'qrcode';
 import PDFDocument from 'pdfkit';
 
@@ -13,8 +13,22 @@ const app = express();
 const prisma = new PrismaClient();
 
 const PORT = process.env.PORT || 3001;
-const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-in-prod';
+const JWT_SECRET = process.env.JWT_SECRET;
 const APP_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+// Validazione environment variables critiche
+if (!JWT_SECRET) {
+  console.error('FATAL ERROR: JWT_SECRET environment variable is not set!');
+  console.error('Please set JWT_SECRET in your .env file or environment variables.');
+  console.error('Generate a strong secret with: openssl rand -base64 32');
+  process.exit(1);
+}
+
+if (JWT_SECRET === 'super-secret-key-change-in-prod' || JWT_SECRET === 'chiave_segreta_super_sicura_campari_123') {
+  console.error('FATAL ERROR: JWT_SECRET is using a weak default value!');
+  console.error('Please generate a strong secret with: openssl rand -base64 32');
+  process.exit(1);
+}
 
 // Configurazione CORS
 app.use(cors({
@@ -292,8 +306,7 @@ app.post('/api/admin/generate-tokens', authenticateToken, authorizeRole('admin')
     }
 
     await prisma.token.createMany({
-        data: codesToCreate,
-        skipDuplicates: true
+        data: codesToCreate
     });
 
     const tokens = await prisma.token.findMany({
@@ -408,16 +421,46 @@ app.post('/api/customer/register', async (req, res) => {
       }
     });
 
-    res.json({ customerId: customer.id });
+    // Genera un JWT token per il customer
+    const customerToken = jwt.sign(
+      {
+        customerId: customer.id,
+        promotionId: customer.promotion_id,
+        phoneNumber: customer.phone_number
+      },
+      JWT_SECRET,
+      { expiresIn: '30d' } // Token valido per 30 giorni
+    );
+
+    // Imposta il token come cookie
+    res.cookie('customerToken', customerToken, {
+      httpOnly: true,
+      secure: true, // HTTPS only
+      sameSite: 'none',
+      maxAge: 30 * 24 * 3600 * 1000 // 30 giorni
+    });
+
+    res.json({
+      customerId: customer.id,
+      token: customerToken // Restituiamo anche il token nel body per flessibilità
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Registration failed' });
   }
 });
 
-// Play
-app.post('/api/customer/play', async (req: any, res: any) => {
-  const { promotion_id, token_code, customer_id } = req.body;
+// Play - PROTETTO DA AUTENTICAZIONE
+app.post('/api/customer/play', authenticateCustomer, async (req: AuthRequest, res: any) => {
+  const { promotion_id, token_code } = req.body;
+
+  // SICUREZZA: Usa il customer_id dal token JWT, NON dal body della richiesta!
+  const customer_id = req.customer!.customerId;
+
+  // Verifica che il customer appartenga alla promozione
+  if (req.customer!.promotionId !== Number(promotion_id)) {
+    return res.status(403).json({ error: 'Customer not authorized for this promotion' });
+  }
 
   try {
     const result = await prisma.$transaction(async (tx) => {

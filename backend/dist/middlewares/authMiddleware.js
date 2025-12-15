@@ -3,9 +3,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.authorizeRole = exports.authenticateToken = void 0;
+exports.authorizeRole = exports.authenticateCustomer = exports.authenticateToken = void 0;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
-const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-in-prod';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+    throw new Error('JWT_SECRET environment variable is not set!');
+}
 // ------------------------------------------------------------------
 // Middleware per l'autenticazione
 // ------------------------------------------------------------------
@@ -29,6 +32,27 @@ res, next) => {
     }
 };
 exports.authenticateToken = authenticateToken;
+// ------------------------------------------------------------------
+// Middleware per l'autenticazione dei customer
+// ------------------------------------------------------------------
+const authenticateCustomer = (req, res, next) => {
+    // Cerca il token nei cookie o nell'header Authorization
+    const token = req.cookies?.customerToken || req.headers['authorization']?.split(' ')[1];
+    if (!token) {
+        return res.status(401).json({ error: 'Access denied: Customer token not found' });
+    }
+    try {
+        // Verifica il token
+        const verified = jsonwebtoken_1.default.verify(token, JWT_SECRET);
+        // Attacca il customer alla richiesta
+        req.customer = verified;
+        next();
+    }
+    catch (err) {
+        res.status(403).json({ error: 'Invalid or expired customer token' });
+    }
+};
+exports.authenticateCustomer = authenticateCustomer;
 // ------------------------------------------------------------------
 // Middleware per l'autorizzazione basata sui ruoli (NUOVO)
 // ------------------------------------------------------------------

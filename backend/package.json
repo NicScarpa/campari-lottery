@@ -35,6 +35,7 @@
     "@types/node": "^18.15.11",
     "@types/pdfkit": "^0.12.9",
     "@types/qrcode": "^1.5.0",
+    "better-sqlite3": "^12.5.0",
     "prisma": "^5.0.0"
   },
   "engines": {
