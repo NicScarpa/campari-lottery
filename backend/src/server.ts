@@ -16,10 +16,10 @@ const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-in-prod';
 const APP_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
-// Configurazione CORS fondamentale per i cookie cross-domain
+// Configurazione CORS
 app.use(cors({
   origin: [APP_URL, 'http://localhost:3000'],
-  credentials: true // Permette al frontend di inviare/ricevere cookie
+  credentials: true
 }));
 
 app.use(express.json());
@@ -30,7 +30,9 @@ app.get('/health', (req, res) => {
   res.status(200).send('OK');
 });
 
-// --- STAFF / ADMIN AUTH ---
+// ==========================================
+// 1. AUTHENTICATION (Login / Logout / Me)
+// ==========================================
 
 app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
@@ -47,14 +49,11 @@ app.post('/api/auth/login', async (req, res) => {
       { expiresIn: '8h' }
     );
 
-    // --- FIX COOKIE PER RAILWAY (CROSS-DOMAIN) ---
-    const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT_NAME !== undefined;
-
     res.cookie('token', token, {
-      httpOnly: true, // Non accessibile via JS (sicurezza XSS)
-      secure: true,   // Obbligatorio per sameSite: 'none' (Railway usa HTTPS)
-      sameSite: 'none', // Permette il cookie tra frontend e backend su domini diversi
-      maxAge: 8 * 3600 * 1000 // 8 hours
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 8 * 3600 * 1000
     });
 
     res.json({ success: true, role: user.role });
@@ -77,9 +76,277 @@ app.get('/api/auth/me', authenticateToken, (req: any, res: any) => {
   res.json({ user: req.user });
 });
 
-// --- CUSTOMER FLOW ---
+// ==========================================
+// 2. ADMIN: PROMOTIONS MANAGEMENT (CRUD)
+// ==========================================
 
-// 1. Validate Token (Scan)
+// Lista Promozioni
+app.get('/api/promotions/list', authenticateToken, authorizeRole('admin'), async (req, res) => {
+    try {
+        const promotions = await prisma.promotion.findMany({
+            orderBy: { created_at: 'desc' }
+        });
+        res.json(promotions);
+    } catch (err) {
+        res.status(500).json({ error: 'Errore recupero promozioni' });
+    }
+});
+
+// Crea Promozione
+app.post('/api/promotions/create', authenticateToken, authorizeRole('admin'), async (req, res) => {
+    const { name, plannedTokenCount, startDatetime, endDatetime } = req.body;
+    try {
+        const promo = await prisma.promotion.create({
+            data: {
+                name,
+                planned_token_count: Number(plannedTokenCount),
+                start_datetime: new Date(startDatetime),
+                end_datetime: new Date(endDatetime),
+                status: 'DRAFT'
+            }
+        });
+        res.json({ success: true, promotion: promo });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Errore creazione promozione' });
+    }
+});
+
+// Aggiorna Promozione
+app.put('/api/promotions/update/:id', authenticateToken, authorizeRole('admin'), async (req, res) => {
+    const { id } = req.params;
+    const { name, plannedTokenCount, status, start_datetime, end_datetime } = req.body;
+    try {
+        const promo = await prisma.promotion.update({
+            where: { id: Number(id) },
+            data: {
+                name,
+                planned_token_count: Number(plannedTokenCount),
+                status,
+                start_datetime: new Date(start_datetime),
+                end_datetime: new Date(end_datetime)
+            }
+        });
+        res.json({ success: true, promotion: promo });
+    } catch (err) {
+        res.status(500).json({ error: 'Errore aggiornamento' });
+    }
+});
+
+// Elimina Promozione
+app.delete('/api/promotions/delete/:id', authenticateToken, authorizeRole('admin'), async (req, res) => {
+    const { id } = req.params;
+    try {
+        // Nota: Le constraint del DB potrebbero bloccare l'eliminazione se ci sono dati collegati.
+        // Prisma gestisce il cascade se configurato nello schema, altrimenti va fatto a mano.
+        // Per semplicità assumiamo che il cascade sia gestito o che la promo sia vuota.
+        await prisma.token.deleteMany({ where: { promotion_id: Number(id) } });
+        await prisma.prizeType.deleteMany({ where: { promotion_id: Number(id) } });
+        await prisma.promotion.delete({ where: { id: Number(id) } });
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Errore eliminazione' });
+    }
+});
+
+// ==========================================
+// 3. ADMIN: PRIZES MANAGEMENT
+// ==========================================
+
+app.get('/api/admin/prizes/:promotionId', authenticateToken, authorizeRole('admin'), async (req, res) => {
+    const { promotionId } = req.params;
+    try {
+        const prizes = await prisma.prizeType.findMany({
+            where: { promotion_id: Number(promotionId) },
+            orderBy: { name: 'asc' }
+        });
+        res.json(prizes);
+    } catch (err) {
+        res.status(500).json({ error: 'Errore recupero premi' });
+    }
+});
+
+app.post('/api/admin/prizes/update', authenticateToken, authorizeRole('admin'), async (req, res) => {
+    const { promotionId, prizeTypes } = req.body; // prizeTypes è un array
+    try {
+        // Esempio semplice: elimina e ricrea (o upsert). 
+        // Qui facciamo un ciclo di upsert per semplicità
+        for (const p of prizeTypes) {
+            if (p.id) {
+                await prisma.prizeType.update({
+                    where: { id: p.id },
+                    data: {
+                        name: p.name,
+                        initial_stock: Number(p.initial_stock),
+                        remaining_stock: Number(p.remaining_stock), // O calcolato
+                        target_overall_probability: Number(p.target_overall_probability)
+                    }
+                });
+            } else {
+                await prisma.prizeType.create({
+                    data: {
+                        promotion_id: Number(promotionId),
+                        name: p.name,
+                        initial_stock: Number(p.initial_stock),
+                        remaining_stock: Number(p.initial_stock),
+                        target_overall_probability: Number(p.target_overall_probability)
+                    }
+                });
+            }
+        }
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Errore salvataggio premi' });
+    }
+});
+
+// ==========================================
+// 4. ADMIN: STATS & LOGS
+// ==========================================
+
+app.get('/api/admin/stats/:promotionId', authenticateToken, authorizeRole('admin'), async (req, res) => {
+    const { promotionId } = req.params;
+    const pid = Number(promotionId);
+    try {
+        const totalTokens = await prisma.token.count({ where: { promotion_id: pid } });
+        const usedTokens = await prisma.token.count({ where: { promotion_id: pid, status: 'used' } });
+        const totalPlays = await prisma.play.count({ where: { promotion_id: pid } });
+        const uniquePlayers = await prisma.customer.count({ where: { promotion_id: pid } });
+        const wins = await prisma.play.count({ where: { promotion_id: pid, is_winner: true } });
+        
+        // Calcolo premi assegnati vs totali
+        const prizes = await prisma.prizeType.findMany({ where: { promotion_id: pid } });
+        const totalStock = prizes.reduce((acc, p) => acc + p.initial_stock, 0);
+        const remainingStock = prizes.reduce((acc, p) => acc + p.remaining_stock, 0);
+
+        res.json({
+            tokens: { total: totalTokens, used: usedTokens },
+            plays: { total: totalPlays, unique_players: uniquePlayers },
+            prizes: { total: totalStock, awarded: wins, remaining: remainingStock } // Approx wins = awarded
+        });
+    } catch (err) {
+        res.status(500).json({ error: 'Errore statistiche' });
+    }
+});
+
+app.get('/api/admin/play-logs/:promotionId', authenticateToken, authorizeRole('admin'), async (req, res) => {
+    const { promotionId } = req.params;
+    try {
+        const logs = await prisma.play.findMany({
+            where: { promotion_id: Number(promotionId) },
+            include: {
+                customer: true,
+                token: true,
+                prize_assignments: { include: { prize_type: true } }
+            },
+            orderBy: { played_at: 'desc' },
+            take: 50 // Ultimi 50
+        });
+        
+        // Formattazione per frontend
+        const formatted = logs.map(l => ({
+            id: l.id,
+            timestamp: l.played_at,
+            customerName: `${l.customer.first_name} ${l.customer.last_name}`,
+            phone: l.customer.phone_number,
+            result: l.is_winner ? (l.prize_assignments[0]?.prize_type.name || 'Vincita (Errore ref)') : 'Non vincente',
+            token: l.token.token_code
+        }));
+
+        res.json(formatted);
+    } catch (err) {
+        res.status(500).json({ error: 'Errore logs' });
+    }
+});
+
+app.get('/api/admin/tokens/:promotionId', authenticateToken, authorizeRole('admin'), async (req, res) => {
+    const { promotionId } = req.params;
+    const { page = 1, limit = 50, search = '' } = req.query; // Paginazione base
+    
+    try {
+        const tokens = await prisma.token.findMany({
+            where: { 
+                promotion_id: Number(promotionId),
+                token_code: { contains: String(search) }
+            },
+            orderBy: { created_at: 'desc' },
+            take: Number(limit),
+            skip: (Number(page) - 1) * Number(limit)
+        });
+        res.json({ tokens, total: 0 }); // Total da implementare se serve paginazione vera
+    } catch (err) {
+        res.status(500).json({ error: 'Errore tokens' });
+    }
+});
+
+// Generazione PDF Token
+app.post('/api/admin/generate-tokens', authenticateToken, authorizeRole('admin'), async (req, res) => {
+  const { promotionId, count, prefix } = req.body;
+
+  try {
+    const codesToCreate = [];
+    for (let i = 0; i < count; i++) {
+        const code = (prefix || '') + Math.random().toString(36).substring(2, 8).toUpperCase();
+        codesToCreate.push({
+            promotion_id: Number(promotionId),
+            token_code: code,
+            status: 'available'
+        });
+    }
+
+    // Nota: createMany non è supportato su SQLite, ma su Postgres (Railway) sì.
+    await prisma.token.createMany({
+        data: codesToCreate,
+        skipDuplicates: true
+    });
+
+    const tokens = await prisma.token.findMany({
+        where: { promotion_id: Number(promotionId) },
+        orderBy: { created_at: 'desc' },
+        take: Number(count)
+    });
+
+    const doc = new PDFDocument();
+    
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename=tokens.pdf');
+    doc.pipe(res);
+
+    let x = 50, y = 50;
+    for (const t of tokens) {
+        const playUrl = `${APP_URL}/play?token=${t.token_code}`;
+        const qrData = await QRCode.toDataURL(playUrl);
+        
+        doc.image(qrData, x, y, { width: 100 });
+        doc.text(t.token_code, x, y + 105, { width: 100, align: 'center' });
+        
+        x += 150;
+        if (x > 500) {
+            x = 50;
+            y += 150;
+        }
+        if (y > 700) {
+            doc.addPage();
+            y = 50;
+        }
+    }
+
+    doc.end();
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Generation failed' });
+  }
+});
+
+
+// ==========================================
+// 5. CUSTOMER FLOW (Game)
+// ==========================================
+
+// Validate Token
 app.get('/api/customer/validate-token/:code', async (req, res) => {
   const { code } = req.params;
   try {
@@ -111,7 +378,7 @@ app.get('/api/customer/validate-token/:code', async (req, res) => {
   }
 });
 
-// 2. Register / Identify
+// Register
 app.post('/api/customer/register', async (req, res) => {
   const { promotionId, firstName, lastName, phoneNumber, consentMarketing, consentTerms } = req.body;
   
@@ -154,13 +421,12 @@ app.post('/api/customer/register', async (req, res) => {
   }
 });
 
-// 3. Play (The Core Logic)
+// Play
 app.post('/api/customer/play', async (req: any, res: any) => {
   const { promotion_id, token_code, customer_id } = req.body;
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      // A. Re-validate token
       const token = await tx.token.findUnique({
         where: { token_code },
         include: { promotion: true }
@@ -172,7 +438,6 @@ app.post('/api/customer/play', async (req: any, res: any) => {
 
       const promotionId = token.promotion_id;
 
-      // B. Load Prizes & Stats for Engine
       const totalTokens = await tx.token.count({ where: { promotion_id: promotionId } });
       const usedTokens = await tx.token.count({ where: { promotion_id: promotionId, status: 'used' } });
       
@@ -180,7 +445,6 @@ app.post('/api/customer/play', async (req: any, res: any) => {
         where: { promotion_id: promotionId }
       });
 
-      // C. Determine Outcome
       const engine = new ProbabilityEngine();
       const wonPrizeType = engine.determineOutcome({
         totalTokens,
@@ -196,7 +460,6 @@ app.post('/api/customer/play', async (req: any, res: any) => {
       let prizeAssignment = null;
       let isWinner = false;
 
-      // D. Logic for Winner / Loser
       if (wonPrizeType) {
         const updateResult = await tx.prizeType.updateMany({
           where: { 
@@ -234,7 +497,6 @@ app.post('/api/customer/play', async (req: any, res: any) => {
               prize_type: true
             }
           });
-
         } else {
           isWinner = false;
           await tx.play.create({
@@ -284,7 +546,7 @@ app.post('/api/customer/play', async (req: any, res: any) => {
   }
 });
 
-// 4. Leaderboard (Live)
+// Leaderboard
 app.get('/api/leaderboard/:promotionId', async (req, res) => {
   const { promotionId } = req.params;
   const { customerId } = req.query;
@@ -343,67 +605,10 @@ app.get('/api/leaderboard/:promotionId', async (req, res) => {
   }
 });
 
-// --- ADMIN API (Protected) ---
+// ==========================================
+// 6. STAFF API
+// ==========================================
 
-app.post('/api/admin/generate-tokens', authenticateToken, authorizeRole('admin'), async (req, res) => {
-  const { promotionId, count, prefix } = req.body;
-
-  try {
-    const codesToCreate = [];
-    for (let i = 0; i < count; i++) {
-        const code = (prefix || '') + Math.random().toString(36).substring(2, 8).toUpperCase();
-        codesToCreate.push({
-            promotion_id: Number(promotionId),
-            token_code: code,
-            status: 'available'
-        });
-    }
-
-    await prisma.token.createMany({
-        data: codesToCreate,
-        skipDuplicates: true
-    });
-
-    const tokens = await prisma.token.findMany({
-        where: { promotion_id: Number(promotionId) },
-        orderBy: { created_at: 'desc' },
-        take: Number(count)
-    });
-
-    const doc = new PDFDocument();
-    
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename=tokens.pdf');
-    doc.pipe(res);
-
-    let x = 50, y = 50;
-    for (const t of tokens) {
-        const playUrl = `${APP_URL}/play?token=${t.token_code}`;
-        const qrData = await QRCode.toDataURL(playUrl);
-        
-        doc.image(qrData, x, y, { width: 100 });
-        doc.text(t.token_code, x, y + 105, { width: 100, align: 'center' });
-        
-        x += 150;
-        if (x > 500) {
-            x = 50;
-            y += 150;
-        }
-        if (y > 700) {
-            doc.addPage();
-            y = 50;
-        }
-    }
-
-    doc.end();
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Generation failed' });
-  }
-});
-
-// --- STAFF API ---
 app.post('/api/staff/redeem', authenticateToken, async (req, res) => {
     const { prizeCode } = req.body;
     
