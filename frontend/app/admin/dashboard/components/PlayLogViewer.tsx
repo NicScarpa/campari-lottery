@@ -26,7 +26,7 @@ export default function PlayLogViewer({ promotionId }: { promotionId: string }) 
         setError(null);
 
         try {
-            const res = await fetch(`${API_URL}/api/admin/plays/list/${promotionId}`, {
+            const res = await fetch(`${API_URL}/api/admin/play-logs/${promotionId}`, {
                 method: 'GET',
                 credentials: 'include',
             });

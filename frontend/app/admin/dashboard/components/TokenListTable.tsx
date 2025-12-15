@@ -29,14 +29,14 @@ export default function TokenListTable({ promotionId }: { promotionId: string })
             setLoading(true);
             setError('');
             try {
-                const res = await fetch(`${API_URL}/api/admin/tokens/list/${promotionId}`, {
+                const res = await fetch(`${API_URL}/api/admin/tokens/${promotionId}`, {
                     method: 'GET',
                     credentials: 'include',
                 });
 
                 if (res.ok) {
                     const data = await res.json();
-                    setTokens(data);
+                    setTokens(data.tokens || []); // Backend restituisce { tokens, total }
                     setCurrentPage(1); // Reset alla prima pagina quando i dati cambiano
                 } else {
                     const errData = await res.json();
