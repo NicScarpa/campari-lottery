@@ -2,6 +2,9 @@
   "name": "campari-lottery-backend",
   "version": "1.0.0",
   "main": "dist/server.js",
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
@@ -19,7 +22,9 @@
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.0",
     "pdfkit": "^0.13.0",
-    "qrcode": "^1.5.1"
+    "qrcode": "^1.5.1",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.0.4"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.0",
@@ -30,9 +35,7 @@
     "@types/node": "^18.15.11",
     "@types/pdfkit": "^0.12.9",
     "@types/qrcode": "^1.5.0",
-    "prisma": "^5.0.0",
-    "ts-node": "^10.9.1",
-    "typescript": "^5.0.4"
+    "prisma": "^5.0.0"
   },
   "engines": {
     "node": ">=18.0.0"
