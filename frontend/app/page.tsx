@@ -23,7 +23,7 @@ export default function Home() {
             href="/admin/login" 
             className="inline-block w-full bg-white text-[#E3001B] px-8 py-4 rounded-full font-bold text-lg shadow-lg hover:bg-gray-100 hover:scale-105 transition-all uppercase tracking-widest"
           >
-            Accedi allo Staff
+            Accedi
           </Link>
         </div>
 
