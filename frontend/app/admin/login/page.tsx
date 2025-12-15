@@ -18,31 +18,37 @@ export default function LoginPage() {
     const checkSession = async () => {
       try {
         // MODIFICA: Uso getApiUrl
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
         const res = await fetch(getApiUrl('api/auth/me'), {
           method: 'GET',
-          credentials: 'include' 
+          credentials: 'include',
+          signal: controller.signal
         });
+
+        clearTimeout(timeoutId);
 
         if (res.ok) {
           const data = await res.json();
           // Se la sessione è valida, reindirizza IMMEDIATAMENTE alla dashboard.
           if (data.user.role === 'admin') {
-            router.replace('/admin/dashboard'); 
+            router.replace('/admin/dashboard');
           } else {
             router.replace('/staff'); // Presumo che la dashboard staff sia su /staff
           }
         } else {
           // Se 401/403/errore, mostra il form.
-          setLoading(false); 
+          setLoading(false);
         }
       } catch (err) {
         // Errore di connessione (server spento o errore di rete)
         console.error("Errore di connessione alla API:", err);
-        setLoading(false); 
+        setLoading(false);
         // Potresti voler mostrare un messaggio di errore di connessione qui, ma per ora lo lasciamo silenzioso.
       }
     };
-    
+
     checkSession();
   }, [router]);
   // -------------------------------------------------------------------

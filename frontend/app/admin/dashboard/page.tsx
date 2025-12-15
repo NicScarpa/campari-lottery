@@ -73,19 +73,26 @@ export default function AdminDashboardPage() {
 
     const checkSession = async () => {
         try {
-            // FIX: Uso getApiUrl
+            // FIX: Uso getApiUrl with timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
             const res = await fetch(getApiUrl('api/auth/me'), {
                 method: 'GET',
-                credentials: 'include' 
+                credentials: 'include',
+                signal: controller.signal
             });
 
+            clearTimeout(timeoutId);
+
             if (res.ok) {
-                await fetchPromotions(); 
-                setLoading(false); 
+                await fetchPromotions();
+                setLoading(false);
             } else {
                 router.push('/admin/login');
             }
         } catch (error) {
+            console.error('Session check error:', error);
             router.push('/admin/login');
         }
     };

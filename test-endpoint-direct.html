@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Endpoint Diretto</title>
+</head>
+<body>
+    <h1>Test Endpoint Railway</h1>
+    <div id="result"></div>
+
+    <script>
+        // Test diretto dell'endpoint corretto
+        fetch('https://backend-campari-lottery-production.up.railway.app/api/admin/play-logs/1', {
+            credentials: 'include'
+        })
+        .then(res => {
+            document.getElementById('result').innerHTML =
+                '<h2>Status: ' + res.status + '</h2>' +
+                '<p>Endpoint /api/admin/play-logs/1 risponde: ' +
+                (res.ok ? '✅ OK' : '❌ Error') + '</p>';
+        })
+        .catch(err => {
+            document.getElementById('result').innerHTML =
+                '<h2>❌ Errore di rete</h2><p>' + err.message + '</p>';
+        });
+    </script>
+</body>
+</html>
