@@ -630,14 +630,15 @@ app.post('/api/admin/generate-tokens', authenticateToken, authorizeRole('admin')
     // Paths risorse
     const LOGO_PATH = path.join(__dirname, '../../frontend/public/logocamparisoda_bianco.png');
     const TEXTURE_PATH = path.join(__dirname, '../../frontend/public/bottiglia.png');
-    const FONT_TITLE = path.join(__dirname, '../fonts/Oswald-Bold.ttf');
+    const TEXTURE_PATH_FRONT = path.join(__dirname, '../../frontend/public/bottiglia_bianca.png');
+    const FONT_TITLE = path.join(__dirname, '../fonts/JosefinSans-Bold.ttf');
     const FONT_CODE = path.join(__dirname, '../fonts/Roboto-Medium.ttf');
 
     // Colore Campari
     const CAMPARI_RED = '#D31418';
 
-    // Helper: Disegna Pattern Bottiglie con rotazione
-    const drawPattern = (x: number, y: number, w: number, h: number, opacity: number) => {
+    // Helper: Disegna Pattern Bottiglie (rotazione 0 gradi)
+    const drawPattern = (x: number, y: number, w: number, h: number, opacity: number, texturePath: string) => {
       doc.save();
       doc.rect(x, y, w, h).clip();
       doc.opacity(opacity);
@@ -655,13 +656,8 @@ app.post('/api/admin/generate-tokens', authenticateToken, authorizeRole('admin')
             const bX = x + (pc * patW) + offsetX + (patW - bW) / 2;
             const bY = y + (pr * patH) + (patH - bW) / 2;
 
-            // Rotazione -15deg come da design
-            doc.save();
-            doc.translate(bX + bW / 2, bY + bW * 1.5);
-            doc.rotate(-15);
-            doc.translate(-(bX + bW / 2), -(bY + bW * 1.5));
-            doc.image(TEXTURE_PATH, bX, bY, { width: bW });
-            doc.restore();
+            // Nessuna rotazione (0 gradi)
+            doc.image(texturePath, bX, bY, { width: bW });
           } catch (e) { /* Ignora errori immagine */ }
         }
       }
@@ -681,8 +677,8 @@ app.post('/api/admin/generate-tokens', authenticateToken, authorizeRole('admin')
         // 1. Sfondo Rosso Campari
         doc.rect(x, y, CARD_W, CARD_H).fill(CAMPARI_RED);
 
-        // 2. Pattern tono su tono (opacity 0.15)
-        drawPattern(x, y, CARD_W, CARD_H, 0.15);
+        // 2. Pattern tono su tono (opacity 0.15) - usa bottiglia rossa per retro
+        drawPattern(x, y, CARD_W, CARD_H, 0.15, TEXTURE_PATH);
 
         // 3. Logo Bianco Centrato
         const logoW = 100;
@@ -715,8 +711,8 @@ app.post('/api/admin/generate-tokens', authenticateToken, authorizeRole('admin')
         // 1. Sfondo Bianco
         doc.rect(x, y, CARD_W, CARD_H).fill('white');
 
-        // 2. Pattern filigrana leggera (opacity 0.06)
-        drawPattern(x, y, CARD_W, CARD_H, 0.06);
+        // 2. Pattern filigrana leggera (opacity 0.06) - usa bottiglia bianca per effetto grayscale
+        drawPattern(x, y, CARD_W, CARD_H, 0.06, TEXTURE_PATH_FRONT);
 
         // 3. Bordo guida taglio
         doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.2).stroke('#ddd');
@@ -824,14 +820,15 @@ app.get('/api/admin/tokens/pdf/:promotionId', authenticateToken, authorizeRole('
     // Paths risorse
     const LOGO_PATH = path.join(__dirname, '../../frontend/public/logocamparisoda_bianco.png');
     const TEXTURE_PATH = path.join(__dirname, '../../frontend/public/bottiglia.png');
-    const FONT_TITLE = path.join(__dirname, '../fonts/Oswald-Bold.ttf');
+    const TEXTURE_PATH_FRONT = path.join(__dirname, '../../frontend/public/bottiglia_bianca.png');
+    const FONT_TITLE = path.join(__dirname, '../fonts/JosefinSans-Bold.ttf');
     const FONT_CODE = path.join(__dirname, '../fonts/Roboto-Medium.ttf');
 
     // Colore Campari
     const CAMPARI_RED = '#D31418';
 
-    // Helper: Disegna Pattern Bottiglie con rotazione
-    const drawPattern = (x: number, y: number, w: number, h: number, opacity: number) => {
+    // Helper: Disegna Pattern Bottiglie (rotazione 0 gradi)
+    const drawPattern = (x: number, y: number, w: number, h: number, opacity: number, texturePath: string) => {
       doc.save();
       doc.rect(x, y, w, h).clip();
       doc.opacity(opacity);
@@ -849,13 +846,8 @@ app.get('/api/admin/tokens/pdf/:promotionId', authenticateToken, authorizeRole('
             const bX = x + (pc * patW) + offsetX + (patW - bW) / 2;
             const bY = y + (pr * patH) + (patH - bW) / 2;
 
-            // Rotazione -15deg come da design
-            doc.save();
-            doc.translate(bX + bW / 2, bY + bW * 1.5);
-            doc.rotate(-15);
-            doc.translate(-(bX + bW / 2), -(bY + bW * 1.5));
-            doc.image(TEXTURE_PATH, bX, bY, { width: bW });
-            doc.restore();
+            // Nessuna rotazione (0 gradi)
+            doc.image(texturePath, bX, bY, { width: bW });
           } catch (e) { /* Ignora errori immagine */ }
         }
       }
@@ -875,8 +867,8 @@ app.get('/api/admin/tokens/pdf/:promotionId', authenticateToken, authorizeRole('
         // 1. Sfondo Rosso Campari
         doc.rect(x, y, CARD_W, CARD_H).fill(CAMPARI_RED);
 
-        // 2. Pattern tono su tono (opacity 0.15)
-        drawPattern(x, y, CARD_W, CARD_H, 0.15);
+        // 2. Pattern tono su tono (opacity 0.15) - usa bottiglia rossa per retro
+        drawPattern(x, y, CARD_W, CARD_H, 0.15, TEXTURE_PATH);
 
         // 3. Logo Bianco Centrato
         const logoW = 100;
@@ -909,8 +901,8 @@ app.get('/api/admin/tokens/pdf/:promotionId', authenticateToken, authorizeRole('
         // 1. Sfondo Bianco
         doc.rect(x, y, CARD_W, CARD_H).fill('white');
 
-        // 2. Pattern filigrana leggera (opacity 0.06)
-        drawPattern(x, y, CARD_W, CARD_H, 0.06);
+        // 2. Pattern filigrana leggera (opacity 0.06) - usa bottiglia bianca per effetto grayscale
+        drawPattern(x, y, CARD_W, CARD_H, 0.06, TEXTURE_PATH_FRONT);
 
         // 3. Bordo guida taglio
         doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.2).stroke('#ddd');
