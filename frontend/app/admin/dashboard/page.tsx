@@ -293,6 +293,12 @@ export default function AdminDashboardPage() {
                         {/* VIEW: DASHBOARD */}
                         {currentView === 'dashboard' && (
                             <>
+                                {/* Prize Overview - Full Width */}
+                                <PrizeOverview
+                                    promotionId={currentPromotion.id}
+                                    refreshKey={dataRefreshKey}
+                                />
+
                                 {/* Stats & Quick Actions Row */}
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                     {/* Stats Card (Takes 2 cols on md) */}
@@ -322,28 +328,17 @@ export default function AdminDashboardPage() {
                                     </div>
                                 </div>
 
-                                {/* Recent Activity + Prize Overview Row */}
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                    {/* Token List */}
-                                    <div>
-                                        <div className="flex justify-between items-center mb-4 px-2">
-                                            <h3 className="font-bold text-gray-800">Ultimi Token Utilizzati</h3>
-                                            <button onClick={() => setCurrentView('token')} className="text-sm text-[#E3001B] font-medium hover:underline">Vedi tutti</button>
-                                        </div>
-                                        <TokenListTable
-                                            promotionId={currentPromotion.id}
-                                            key={`table-${currentPromotion.id}-${dataRefreshKey}`}
-                                            limit={5}
-                                        />
+                                {/* Recent Activity */}
+                                <div>
+                                    <div className="flex justify-between items-center mb-4 px-2">
+                                        <h3 className="font-bold text-gray-800">Ultimi Token Utilizzati</h3>
+                                        <button onClick={() => setCurrentView('token')} className="text-sm text-[#E3001B] font-medium hover:underline">Vedi tutti</button>
                                     </div>
-
-                                    {/* Prize Overview */}
-                                    <div>
-                                        <PrizeOverview
-                                            promotionId={currentPromotion.id}
-                                            refreshKey={dataRefreshKey}
-                                        />
-                                    </div>
+                                    <TokenListTable
+                                        promotionId={currentPromotion.id}
+                                        key={`table-${currentPromotion.id}-${dataRefreshKey}`}
+                                        limit={5}
+                                    />
                                 </div>
                             </>
                         )}
