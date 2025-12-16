@@ -544,123 +544,128 @@ app.post('/api/admin/generate-tokens', authMiddleware_1.authenticateToken, (0, a
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', 'attachment; filename=tokens_print_8x5.pdf');
         doc.pipe(res);
-        // --- CONFIGURAZIONE GRIGLIA (80mm x 50mm) ---
-        // 1mm = 2.83465 pt
+        // --- CONFIGURAZIONE GRIGLIA VERTICALE (50mm x 80mm) ---
         const MM_TO_PT = 2.83465;
-        const CARD_W = 80 * MM_TO_PT; // ~226.77
-        const CARD_H = 50 * MM_TO_PT; // ~141.73
-        const GAP_X = 0;
-        const GAP_Y = 0;
-        // A4 = 595.28 x 841.89
-        // 2 Colonne, 5 Righe = 10 card per pagina
-        // Margini centrati
+        const CARD_W = 50 * MM_TO_PT; // ~141.73
+        const CARD_H = 80 * MM_TO_PT; // ~226.77
+        // A4 = 595.28 x 841.89 (210mm x 297mm)
+        // 4 Colonne (200mm), 3 Righe (240mm) = 12 card per pagina
+        const COLUMNS = 4;
+        const ROWS = 3;
+        const CARDS_PER_PAGE = COLUMNS * ROWS;
         const PAGE_W = 595.28;
         const PAGE_H = 841.89;
-        const CONTENT_W = (CARD_W * 2);
-        const CONTENT_H = (CARD_H * 5);
+        const CONTENT_W = (CARD_W * COLUMNS);
+        const CONTENT_H = (CARD_H * ROWS);
         const START_X = (PAGE_W - CONTENT_W) / 2;
         const START_Y = (PAGE_H - CONTENT_H) / 2;
-        const LOGO_PATH = path.join(__dirname, '../../frontend/public/camparisoda.png');
+        const LOGO_PATH = path.join(__dirname, '../../frontend/public/logocamparisoda_bianco.png');
         const TEXTURE_PATH = path.join(__dirname, '../../frontend/public/bottiglia.png');
-        // Font Paths (Assuming folder structure: backend/fonts is sibling to src or dist)
-        // Run context: ts-node src/server.ts -> __dirname = src. Fonts = ../fonts
-        const FONT_BOLD = path.join(__dirname, '../fonts/JosefinSans-Bold.ttf');
-        const FONT_LIGHT = path.join(__dirname, '../fonts/JosefinSans-ExtraLight.ttf');
-        // Funzione: Disegna Retro (Pagina intera)
+        const FONT_TITLE = path.join(__dirname, '../fonts/Oswald-Bold.ttf');
+        const FONT_CODE = path.join(__dirname, '../fonts/Roboto-Medium.ttf'); // Usiamo Roboto come richiesto (Medium o Regular)
+        // Helper: Disegna Texture Pattern
+        const drawPattern = (doc, x, y, w, h, opacity, brightness = 1) => {
+            doc.save();
+            doc.rect(x, y, w, h).clip();
+            doc.opacity(opacity);
+            const patCols = 4; // Più densa
+            const patRows = 5;
+            const patW = w / patCols;
+            const patH = h / patRows;
+            for (let pr = 0; pr < patRows; pr++) {
+                for (let pc = 0; pc < patCols; pc++) {
+                    const offsetX = (pr % 2 === 0) ? 0 : (patW / 2);
+                    try {
+                        const bW = patW * 0.7;
+                        const bX = x + (pc * patW) + offsetX + (patW - bW) / 2;
+                        const bY = y + (pr * patH) + (patH - bW) / 2;
+                        // Ruotiamo leggermente ogni bottiglia come da specifiche CSS (-5deg)
+                        doc.save();
+                        doc.translate(bX + bW / 2, bY + bW * (716 / 238) / 2); // Centro rotazione approx
+                        doc.rotate(-15);
+                        doc.translate(-(bX + bW / 2), -(bY + bW * (716 / 238) / 2));
+                        doc.image(TEXTURE_PATH, bX, bY, { width: bW });
+                        doc.restore();
+                    }
+                    catch (e) { }
+                }
+            }
+            doc.restore();
+        };
+        // Funzione: Disegna Retro
         const drawBackPage = () => {
             doc.addPage({ size: 'A4', margin: 0 });
-            for (let row = 0; row < 5; row++) {
-                for (let col = 0; col < 2; col++) {
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLUMNS; col++) {
                     const x = START_X + (col * CARD_W);
                     const y = START_Y + (row * CARD_H);
                     // 1. Sfondo Rosso
-                    doc.rect(x, y, CARD_W, CARD_H).fill('#E3001B');
-                    // 2. Guide Taglio (Stroke sottile bianco)
-                    doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.5).stroke('white');
-                    // 3. Texture Pattern (Bottiglie)
-                    // Disegniamo una griglia di bottigliette 4x3 per coprire la card
-                    doc.save();
-                    doc.rect(x, y, CARD_W, CARD_H).clip(); // Clip alla card
-                    doc.opacity(0.15); // Molto leggero per effetto tono su tono
-                    const patCols = 5;
-                    const patRows = 3;
-                    const patW = CARD_W / patCols;
-                    const patH = CARD_H / patRows;
-                    for (let pr = 0; pr < patRows; pr++) {
-                        for (let pc = 0; pc < patCols; pc++) {
-                            // Offset alternato per righe
-                            const offsetX = (pr % 2 === 0) ? 0 : (patW / 2);
-                            try {
-                                // Centriamo la bottiglietta nella cella della griglia
-                                const bW = patW * 0.6; // più piccolo della cella
-                                const bX = x + (pc * patW) + offsetX + (patW - bW) / 2;
-                                const bY = y + (pr * patH) + (patH - bW) / 2; // approx aspect ratio
-                                doc.image(TEXTURE_PATH, bX, bY, { width: bW });
-                            }
-                            catch (e) {
-                                // Ignora se manca texture
-                            }
-                        }
-                    }
-                    doc.restore(); // Reset opacity & clip
-                    // 4. Campari Logo (Bianco - Centrale)
-                    const logoW = 90;
+                    doc.rect(x, y, CARD_W, CARD_H).fill('#D31418'); // Campari Red Updated
+                    // 2. Texture (Tono su tono scuro/chiaro)
+                    drawPattern(doc, x, y, CARD_W, CARD_H, 0.15); // Opacity 0.15
+                    // 3. Logo Bianco Centrale
+                    const logoW = 100; // 35mm approx
                     try {
-                        doc.image(LOGO_PATH, x + (CARD_W - logoW) / 2, y + (CARD_H - logoW) / 2 - 5, { width: logoW });
+                        doc.image(LOGO_PATH, x + (CARD_W - logoW) / 2, y + (CARD_H - logoW) / 2, { width: logoW });
                     }
                     catch (e) {
-                        doc.fillColor('white').font('Helvetica-Bold').fontSize(14).text('CAMPARI', x, y + CARD_H / 2 - 10, { width: CARD_W, align: 'center' });
+                        doc.fillColor('white').text('CAMPARI', x, y + 30);
                     }
+                    // Guide Taglio
+                    doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.5).stroke('white');
                 }
             }
         };
-        // Chuuk tokens in gruppi da 10
-        const chunkSize = 10;
+        // Main Loop
+        const chunkSize = CARDS_PER_PAGE;
         for (let i = 0; i < tokens.length; i += chunkSize) {
             const chunk = tokens.slice(i, i + chunkSize);
             // --- PAGINA FRONTE ---
             doc.addPage({ size: 'A4', margin: 0 });
             for (let j = 0; j < chunk.length; j++) {
                 const token = chunk[j];
-                const row = Math.floor(j / 2);
-                const col = j % 2;
+                const row = Math.floor(j / COLUMNS);
+                const col = j % COLUMNS;
                 const x = START_X + (col * CARD_W);
                 const y = START_Y + (row * CARD_H);
                 // Sfondo Bianco
                 doc.rect(x, y, CARD_W, CARD_H).fill('white');
-                // Bordo di taglio (grigio chiaro)
-                doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.2).stroke('#ccc');
-                // Header: SCANSIONA E VINCI (Josefin Sans Bold)
-                doc.fillColor('#E3001B');
+                // Texture light
+                drawPattern(doc, x, y, CARD_W, CARD_H, 0.06);
+                // Guide
+                doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.2).stroke('#ddd');
+                // Header: SCANSIONA E VINCI (Oswald Bold)
+                doc.fillColor('#D31418');
                 try {
-                    doc.font(FONT_BOLD).fontSize(20);
+                    doc.font(FONT_TITLE).fontSize(20);
                 }
                 catch (e) {
                     doc.font('Helvetica-Bold').fontSize(20);
                 }
-                // Stacked Title
-                doc.text('SCANSIONA', x, y + 15, { width: CARD_W, align: 'center' });
-                doc.text('E VINCI', x, y + 36, { width: CARD_W, align: 'center' });
+                // Centrato in alto
+                const textY = y + 20;
+                doc.text('SCANSIONA', x, textY, { width: CARD_W, align: 'center', lineGap: -5 });
+                doc.text('E VINCI', x, textY + 22, { width: CARD_W, align: 'center' });
                 // QR Code
                 const playUrl = `${APP_URL}/play?token=${token.token_code}`;
                 const qrData = await qrcode_1.default.toDataURL(playUrl, { margin: 0 });
-                const qrSize = 85;
-                doc.image(qrData, x + (CARD_W - qrSize) / 2, y + 60, { width: qrSize });
-                // Token Code (Josefin Sans ExtraLight)
+                const qrSize = 85; // 30mm approx
+                doc.image(qrData, x + (CARD_W - qrSize) / 2, textY + 55, { width: qrSize });
+                // Token Code (Roboto)
                 doc.fillColor('black');
                 try {
-                    doc.font(FONT_LIGHT).fontSize(14); // Leggermente più grande per leggibilità anche se Light
+                    doc.font(FONT_CODE).fontSize(11);
                 }
                 catch (e) {
-                    doc.font('Courier').fontSize(12);
+                    doc.font('Courier').fontSize(11);
                 }
-                doc.text(`${token.token_code}`, x, y + CARD_H - 22, { width: CARD_W, align: 'center', characterSpacing: 4 });
-                // Angolo Decorativo (Basso Destra) -> Triangolo Rosso
+                doc.text(`${token.token_code}`, x, textY + 55 + qrSize + 10, { width: CARD_W, align: 'center', characterSpacing: 1 });
+                // Angolo Decorativo
                 doc.save();
-                doc.moveTo(x + CARD_W - 35, y + CARD_H)
+                doc.moveTo(x + CARD_W - 30, y + CARD_H)
                     .lineTo(x + CARD_W, y + CARD_H)
-                    .lineTo(x + CARD_W, y + CARD_H - 35)
-                    .fill('#E3001B');
+                    .lineTo(x + CARD_W, y + CARD_H - 30)
+                    .fill('#D31418');
                 doc.restore();
             }
             // --- PAGINA RETRO ---
