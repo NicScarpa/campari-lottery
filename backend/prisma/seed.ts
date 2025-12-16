@@ -20,20 +20,30 @@ async function main() {
 
   console.log({ admin });
 
-  // 2. Crea uno Staff di prova (opzionale)
-  const staffPassword = await bcrypt.hash('Staff123!', 10);
-  
-  const staff = await prisma.staffUser.upsert({
-    where: { username: 'staff' },
-    update: {},
-    create: {
-      username: 'staff',
-      password_hash: staffPassword,
-      role: 'staff',
-    },
-  });
+  // 2. Crea gli utenti Staff
+  const staffUsers = [
+    { username: 'Brian', password: 'MonferoneBrian' },
+    { username: 'Andrea', password: 'SegattoAndrea' },
+    { username: 'Matteo', password: 'MomessoMatteo' },
+    { username: 'Silvia', password: 'CarnielloSilvia' },
+    { username: 'Veronica', password: 'PaieroVeronica' },
+    { username: 'Nicola', password: 'ScarpaNicola' },
+    { username: 'Simone', password: 'MilaneseSimone' },
+  ];
 
-  console.log({ staff });
+  for (const user of staffUsers) {
+    const passwordHash = await bcrypt.hash(user.password, 10);
+    const staffUser = await prisma.staffUser.upsert({
+      where: { username: user.username },
+      update: { password_hash: passwordHash },
+      create: {
+        username: user.username,
+        password_hash: passwordHash,
+        role: 'staff',
+      },
+    });
+    console.log(`Staff created: ${staffUser.username}`);
+  }
 }
 
 main()
