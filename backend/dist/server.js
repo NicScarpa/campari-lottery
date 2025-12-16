@@ -561,6 +561,7 @@ app.post('/api/admin/generate-tokens', authMiddleware_1.authenticateToken, (0, a
         const START_X = (PAGE_W - CONTENT_W) / 2;
         const START_Y = (PAGE_H - CONTENT_H) / 2;
         const LOGO_PATH = path.join(__dirname, '../../frontend/public/camparisoda.png');
+        const TEXTURE_PATH = path.join(__dirname, '../../frontend/public/bottiglia.png');
         // Font Paths (Assuming folder structure: backend/fonts is sibling to src or dist)
         // Run context: ts-node src/server.ts -> __dirname = src. Fonts = ../fonts
         const FONT_BOLD = path.join(__dirname, '../fonts/JosefinSans-Bold.ttf');
@@ -572,14 +573,40 @@ app.post('/api/admin/generate-tokens', authMiddleware_1.authenticateToken, (0, a
                 for (let col = 0; col < 2; col++) {
                     const x = START_X + (col * CARD_W);
                     const y = START_Y + (row * CARD_H);
-                    // Card Background Red
+                    // 1. Sfondo Rosso
                     doc.rect(x, y, CARD_W, CARD_H).fill('#E3001B');
-                    // Guide Taglio (Stroke sottile bianco o nero ridotto)
+                    // 2. Guide Taglio (Stroke sottile bianco)
                     doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.5).stroke('white');
-                    // Campari Logo
-                    const logoW = 80;
+                    // 3. Texture Pattern (Bottiglie)
+                    // Disegniamo una griglia di bottigliette 4x3 per coprire la card
+                    doc.save();
+                    doc.rect(x, y, CARD_W, CARD_H).clip(); // Clip alla card
+                    doc.opacity(0.15); // Molto leggero per effetto tono su tono
+                    const patCols = 5;
+                    const patRows = 3;
+                    const patW = CARD_W / patCols;
+                    const patH = CARD_H / patRows;
+                    for (let pr = 0; pr < patRows; pr++) {
+                        for (let pc = 0; pc < patCols; pc++) {
+                            // Offset alternato per righe
+                            const offsetX = (pr % 2 === 0) ? 0 : (patW / 2);
+                            try {
+                                // Centriamo la bottiglietta nella cella della griglia
+                                const bW = patW * 0.6; // più piccolo della cella
+                                const bX = x + (pc * patW) + offsetX + (patW - bW) / 2;
+                                const bY = y + (pr * patH) + (patH - bW) / 2; // approx aspect ratio
+                                doc.image(TEXTURE_PATH, bX, bY, { width: bW });
+                            }
+                            catch (e) {
+                                // Ignora se manca texture
+                            }
+                        }
+                    }
+                    doc.restore(); // Reset opacity & clip
+                    // 4. Campari Logo (Bianco - Centrale)
+                    const logoW = 90;
                     try {
-                        doc.image(LOGO_PATH, x + (CARD_W - logoW) / 2, y + (CARD_H - logoW) / 2 - 10, { width: logoW });
+                        doc.image(LOGO_PATH, x + (CARD_W - logoW) / 2, y + (CARD_H - logoW) / 2 - 5, { width: logoW });
                     }
                     catch (e) {
                         doc.fillColor('white').font('Helvetica-Bold').fontSize(14).text('CAMPARI', x, y + CARD_H / 2 - 10, { width: CARD_W, align: 'center' });
