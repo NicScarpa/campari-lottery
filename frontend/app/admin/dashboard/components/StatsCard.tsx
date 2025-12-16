@@ -31,7 +31,7 @@ export default function StatsCard({ promotionId }: { promotionId: string }) {
     const fetchStats = useCallback(async () => {
         setIsLoading(true);
         setError(null);
-        
+
         if (!promotionId) {
             setError("ID Promozione non fornito.");
             setIsLoading(false);
@@ -71,10 +71,14 @@ export default function StatsCard({ promotionId }: { promotionId: string }) {
 
     useEffect(() => {
         fetchStats();
-    }, [fetchStats]); 
+    }, [fetchStats]);
 
     if (isLoading) {
-        return <p className="text-gray-600 animate-pulse">Caricamento statistiche...</p>;
+        return (
+            <div className="bg-[#1a1a1a] p-8 rounded-[2rem] shadow-xl text-white h-full flex items-center justify-center">
+                <p className="animate-pulse opacity-50">Caricamento...</p>
+            </div>
+        );
     }
 
     if (error) {
@@ -85,70 +89,51 @@ export default function StatsCard({ promotionId }: { promotionId: string }) {
         return <p className="text-gray-500 italic">Nessun dato disponibile.</p>;
     }
 
-    // Struttura di visualizzazione
+    const percentageUsed = (stats.tokenStats.used / stats.tokenStats.total) * 100;
+
     return (
-        <div className="bg-transparent">
-            <h3 className="text-xl font-bold mb-4 text-gray-800">Riepilogo e Statistiche</h3>
-            
-            {/* GRID RESPONSIVE: 1 colonna su mobile, 3 su tablet/desktop */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-                <StatBox title="Token Generati" value={stats.tokenStats.total} color="bg-blue-600" />
-                <StatBox title="Disponibili" value={stats.tokenStats.available} color="bg-green-600" />
-                <StatBox title="Utilizzati" value={stats.tokenStats.used} color="bg-red-600" />
+        <div className="bg-[#1a1a1a] text-white p-6 md:p-8 rounded-[2rem] shadow-xl relative overflow-hidden h-full flex flex-col justify-between group">
+            {/* Background Decoration */}
+            <div className="absolute -top-10 -right-10 w-40 h-40 bg-[#E3001B] opacity-20 blur-3xl rounded-full group-hover:opacity-30 transition-opacity"></div>
+
+            <div className="relative z-10">
+                <div className="flex justify-between items-start mb-6">
+                    <div>
+                        <h3 className="text-gray-400 text-sm font-medium uppercase tracking-wider mb-1">Totale Token</h3>
+                        <p className="text-4xl md:text-5xl font-bold tracking-tight">{stats.tokenStats.total.toLocaleString()}</p>
+                    </div>
+                    <div className="p-3 bg-white/10 rounded-xl backdrop-blur-sm">
+                        <svg className="w-6 h-6 text-[#E3001B]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                    <div className="bg-white/5 p-4 rounded-xl border border-white/5 hover:bg-white/10 transition">
+                        <p className="text-xs text-gray-400 mb-1">Disponibili</p>
+                        <p className="text-xl font-bold text-green-400">{stats.tokenStats.available}</p>
+                    </div>
+                    <div className="bg-white/5 p-4 rounded-xl border border-white/5 hover:bg-white/10 transition">
+                        <p className="text-xs text-gray-400 mb-1">Utilizzati</p>
+                        <p className="text-xl font-bold text-[#E3001B]">{stats.tokenStats.used}</p>
+                    </div>
+                </div>
             </div>
 
-            <h4 className="text-lg font-bold mt-6 mb-3 text-gray-800 border-b pb-2">Stock Premi</h4>
-            
-            <div className="space-y-3">
-                {stats.prizeStats.details.length === 0 ? (
-                     <p className="text-gray-500 text-sm italic">Nessun premio configurato.</p>
-                ) : (
-                    stats.prizeStats.details.map((prize, index) => (
-                        <PrizeStockRow key={index} prize={prize} />
-                    ))
-                )}
-            </div>
-            
-            <div className="mt-4 pt-3 border-t border-gray-100 text-right">
-                <p className="text-xs text-gray-400 font-medium">
-                    TOTALE: {stats.prizeStats.remaining} rimanenti su {stats.prizeStats.total} iniziali
-                </p>
+            {/* Progress Bar */}
+            <div className="relative z-10 mt-8">
+                <div className="flex justify-between text-xs text-gray-400 mb-2">
+                    <span>Avanzamento Campagna</span>
+                    <span>{percentageUsed.toFixed(1)}%</span>
+                </div>
+                <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
+                    <div className="bg-[#E3001B] h-full rounded-full transition-all duration-1000" style={{ width: `${percentageUsed}%` }}></div>
+                </div>
             </div>
         </div>
     );
 }
 
-// Componente Card Statistiche
-const StatBox = ({ title, value, color }: { title: string, value: number, color: string }) => (
-    <div className={`p-5 rounded-xl shadow-sm text-white ${color} flex flex-col justify-between h-24 sm:h-auto`}>
-        <p className="text-xs font-bold uppercase tracking-wider opacity-80">{title}</p>
-        <p className="text-3xl font-extrabold mt-1">{value}</p>
-    </div>
-);
-
-// Componente Riga Premio (Responsive)
-const PrizeStockRow = ({ prize }: { prize: PrizeDetail }) => {
-    // Calcolo percentuale per una barra visiva semplice
-    const percentage = prize.initial_stock > 0 ? (prize.remaining_stock / prize.initial_stock) * 100 : 0;
-    
-    return (
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center p-3 bg-gray-50 rounded-lg border border-gray-100 gap-2">
-            <div className="flex-1">
-                <span className="font-semibold text-gray-800 block sm:inline">{prize.name}</span>
-                {/* Barra di progresso visuale */}
-                <div className="w-full bg-gray-200 rounded-full h-1.5 mt-2 sm:mt-1 sm:w-32">
-                    <div 
-                        className={`h-1.5 rounded-full ${percentage < 20 ? 'bg-red-500' : 'bg-blue-500'}`} 
-                        style={{ width: `${percentage}%` }}
-                    ></div>
-                </div>
-            </div>
-            <div className="flex justify-between sm:block sm:text-right">
-                <span className="text-xs text-gray-500 uppercase font-bold sm:hidden">Disponibilità</span>
-                <span className={`text-sm font-bold ${prize.remaining_stock === 0 ? 'text-red-600' : 'text-gray-700'}`}>
-                    {prize.remaining_stock} <span className="text-gray-400 font-normal text-xs">/ {prize.initial_stock}</span>
-                </span>
-            </div>
-        </div>
-    );
-};
+// Remove previously used sub-components if not needed or keep them if intended to be reused. 
+// For now, I replaced the main rendering logic completely to match the specific "Dark Card" design.
+// I am removing usage of PrizeStockRow and StatBox from this main view to focus on Global Token Stats as requested by layout plan.
+// Prize details are handled in PrizeManager view.

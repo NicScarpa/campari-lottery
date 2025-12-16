@@ -11,7 +11,7 @@ interface Props {
 }
 
 export default function TokenGenerator({ promotionId, promotionName, onOperationSuccess }: Props) {
-    const [count, setCount] = useState(10); 
+    const [count, setCount] = useState(10);
     const [successMessage, setSuccessMessage] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
 
@@ -23,8 +23,8 @@ export default function TokenGenerator({ promotionId, promotionName, onOperation
         setErrorMessage('');
 
         if (!promotionId) {
-             setErrorMessage('Seleziona una promozione valida prima di resettare.');
-             return;
+            setErrorMessage('Seleziona una promozione valida prima di resettare.');
+            return;
         }
 
         // Usa il nome della promo nel confirm se disponibile
@@ -52,7 +52,7 @@ export default function TokenGenerator({ promotionId, promotionName, onOperation
 
             if (res.ok) {
                 setSuccessMessage(data.message || `Token resettati con successo.`);
-                onOperationSuccess(); 
+                onOperationSuccess();
             } else {
                 setErrorMessage(data.error || 'Errore durante il reset dei token.');
             }
@@ -74,10 +74,10 @@ export default function TokenGenerator({ promotionId, promotionName, onOperation
             setErrorMessage('La quantità deve essere maggiore di zero.');
             return;
         }
-        
+
         if (!promotionId) {
-             setErrorMessage('Seleziona una promozione valida prima di generare i token.');
-             return;
+            setErrorMessage('Seleziona una promozione valida prima di generare i token.');
+            return;
         }
 
         try {
@@ -99,10 +99,10 @@ export default function TokenGenerator({ promotionId, promotionName, onOperation
 
             // 💡 CONTROLLO PER LA RISPOSTA PDF
             if (res.ok && res.headers.get('Content-Type')?.includes('application/pdf')) {
-                
+
                 const blob = await res.blob();
                 const url = window.URL.createObjectURL(blob);
-                
+
                 const a = document.createElement('a');
                 a.href = url;
                 // Nome file più leggibile
@@ -110,90 +110,80 @@ export default function TokenGenerator({ promotionId, promotionName, onOperation
                 a.download = `lotto_${fileNameSafe}_${new Date().getTime()}.pdf`;
                 document.body.appendChild(a);
                 a.click();
-                
+
                 a.remove();
                 window.URL.revokeObjectURL(url);
 
-                setSuccessMessage(`${count} token generati e salvati. Download del PDF avviato.`);
-                onOperationSuccess(); 
-                
+                setSuccessMessage(`${count} token generati. Download PDF...`);
+                onOperationSuccess();
+
             } else if (res.ok) {
                 const data = await res.json();
-                setSuccessMessage(data.message || `${count} token generati con successo.`);
-                onOperationSuccess(); 
+                setSuccessMessage(data.message || `${count} token generati.`);
+                onOperationSuccess();
             }
             else {
                 const errorData = await res.json();
-                setErrorMessage(errorData.error || 'Errore sconosciuto durante la generazione dei token.');
+                setErrorMessage(errorData.error || 'Errore sconosciuto.');
             }
         } catch (err) {
             console.error(err);
-            setErrorMessage('Errore di connessione al server backend.');
+            setErrorMessage('Errore di connessione.');
         }
     };
 
     return (
-        <div className="bg-white p-6 rounded-lg shadow h-full flex flex-col">
-            <h3 className="text-xl font-bold mb-4 text-gray-800">Generazione Lotto</h3>
-            
+        <div className="flex flex-col h-full bg-transparent">
             {successMessage && (
-                <div className="p-3 mb-4 text-sm text-green-700 bg-green-100 rounded-lg animate-pulse">
+                <div className="p-2 mb-2 text-xs text-green-700 bg-green-50 rounded-lg animate-pulse border border-green-100">
                     {successMessage}
                 </div>
             )}
             {errorMessage && (
-                <div className="p-3 mb-4 text-sm text-red-700 bg-red-100 rounded-lg">
+                <div className="p-2 mb-2 text-xs text-red-700 bg-red-50 rounded-lg border border-red-100">
                     {errorMessage}
                 </div>
             )}
 
-            <form onSubmit={handleGenerateTokens} className="space-y-5 flex-grow">
+            <form onSubmit={handleGenerateTokens} className="flex flex-col gap-4">
+
+                {/* Input Control */}
                 <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">
-                        Promozione Attiva
+                    <label htmlFor="count" className="block text-xs font-semibold text-gray-500 mb-1 pl-1">
+                        Quantità
                     </label>
-                    {/* Visualizzazione Nome invece di Input Disabilitato */}
-                    <div className="w-full bg-blue-50 border border-blue-200 rounded-lg p-3 text-blue-900 font-medium">
-                        {promotionName || "Nessuna promozione selezionata"}
-                        <span className="block text-[10px] text-blue-400 font-mono mt-1">{promotionId}</span>
+                    <div className="relative">
+                        <input
+                            type="number"
+                            id="count"
+                            value={count}
+                            onChange={(e) => setCount(parseInt(e.target.value) || 0)}
+                            className="block w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-lg font-bold text-gray-800 focus:ring-[#E3001B] focus:border-[#E3001B] transition-colors"
+                            min="1"
+                            required
+                        />
+                        <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                            <span className="text-gray-400 text-sm font-medium">pz</span>
+                        </div>
                     </div>
                 </div>
 
-                <div>
-                    <label htmlFor="count" className="block text-sm font-medium text-gray-700 mb-1">
-                        Quantità Token da stampare
-                    </label>
-                    {/* LAYOUT RESPONSIVE: Colonna su mobile, Riga su desktop */}
-                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                        <div className="relative flex-1">
-                            <input
-                                type="number"
-                                id="count"
-                                value={count}
-                                onChange={(e) => setCount(parseInt(e.target.value) || 0)}
-                                className="block w-full border border-gray-300 rounded-lg p-2.5 text-black focus:ring-blue-500 focus:border-blue-500"
-                                min="1"
-                                required
-                            />
-                            <span className="absolute right-3 top-3 text-gray-400 text-sm">pz.</span>
-                        </div>
-                        
-                        <button
-                            type="submit"
-                            className="w-full sm:w-auto bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700 transition shadow-md hover:shadow-lg transform active:scale-95"
-                        >
-                            🖨️ Genera PDF
-                        </button>
-                    </div>
-                </div>
+                {/* Submit Action */}
+                <button
+                    type="submit"
+                    className="w-full bg-[#E3001B] text-white font-bold py-3 px-4 rounded-xl hover:bg-[#c40018] transition-all shadow-lg shadow-red-500/30 active:scale-95 flex items-center justify-center gap-2"
+                >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                    Stampa PDF
+                </button>
             </form>
-            
-            <div className="mt-8 pt-4 border-t border-gray-100">
+
+            <div className="mt-auto pt-4 text-center">
                 <button
                     onClick={handleResetTokens}
-                    className="w-full text-red-500 text-xs hover:text-red-700 underline transition text-center p-2"
+                    className="text-gray-400 text-[10px] hover:text-[#E3001B] transition underline decoration-dashed underline-offset-2"
                 >
-                    ⚠️ Reset totale token per questa promozione
+                    Reset token della promozione
                 </button>
             </div>
         </div>
