@@ -440,9 +440,11 @@ app.delete('/api/admin/tokens/reset/:promotionId', authMiddleware_1.authenticate
         res.status(500).json({ error: 'Errore durante il reset dei token' });
     }
 });
-// Generazione PDF Token
+// Generazione PDF Token (Nuovo Layout 8x5 Fronte/Retro)
 app.post('/api/admin/generate-tokens', authMiddleware_1.authenticateToken, (0, authMiddleware_1.authorizeRole)('admin'), async (req, res) => {
     const { promotionId, count, prefix } = req.body;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const path = require('path'); // Ensure path is available
     try {
         const codesToCreate = [];
         for (let i = 0; i < count; i++) {
@@ -461,25 +463,95 @@ app.post('/api/admin/generate-tokens', authMiddleware_1.authenticateToken, (0, a
             orderBy: { created_at: 'desc' },
             take: Number(count)
         });
-        const doc = new pdfkit_1.default();
+        const doc = new pdfkit_1.default({ size: 'A4', autoFirstPage: false, margin: 0 });
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', 'attachment; filename=tokens.pdf');
+        res.setHeader('Content-Disposition', 'attachment; filename=tokens_print_8x5.pdf');
         doc.pipe(res);
-        let x = 50, y = 50;
-        for (const t of tokens) {
-            const playUrl = `${APP_URL}/play?token=${t.token_code}`;
-            const qrData = await qrcode_1.default.toDataURL(playUrl);
-            doc.image(qrData, x, y, { width: 100 });
-            doc.text(t.token_code, x, y + 105, { width: 100, align: 'center' });
-            x += 150;
-            if (x > 500) {
-                x = 50;
-                y += 150;
+        // --- CONFIGURAZIONE GRIGLIA (80mm x 50mm) ---
+        // 1mm = 2.83465 pt
+        const MM_TO_PT = 2.83465;
+        const CARD_W = 80 * MM_TO_PT; // ~226.77
+        const CARD_H = 50 * MM_TO_PT; // ~141.73
+        const GAP_X = 0;
+        const GAP_Y = 0;
+        // A4 = 595.28 x 841.89
+        // 2 Colonne, 5 Righe = 10 card per pagina
+        // Margini centrati
+        const PAGE_W = 595.28;
+        const PAGE_H = 841.89;
+        const CONTENT_W = (CARD_W * 2);
+        const CONTENT_H = (CARD_H * 5);
+        const START_X = (PAGE_W - CONTENT_W) / 2;
+        const START_Y = (PAGE_H - CONTENT_H) / 2;
+        const LOGO_PATH = path.join(__dirname, '../../frontend/public/camparisoda.png');
+        // Funzione: Disegna Retro (Pagina intera)
+        const drawBackPage = () => {
+            doc.addPage({ size: 'A4', margin: 0 });
+            // Sfondo Rosso Totale (opzionale, ma meglio disegnare rettangoli per card per guida taglio)
+            // doc.rect(0, 0, PAGE_W, PAGE_H).fill('#E3001B'); 
+            for (let row = 0; row < 5; row++) {
+                for (let col = 0; col < 2; col++) {
+                    const x = START_X + (col * CARD_W);
+                    const y = START_Y + (row * CARD_H);
+                    // Card Background Red
+                    doc.rect(x, y, CARD_W, CARD_H).fill('#E3001B');
+                    // Guide Taglio (Stroke sottile bianco o nero ridotto)
+                    doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.5).stroke('white');
+                    // Campari Logo (Bianco)
+                    // Assumiamo che l'immagine sia il logo. Se è trasparente ok.
+                    // Centrato nella card
+                    const logoW = 80;
+                    // doc.image non supporta il caricamento sync facile se il path è rotto, ma qui è locale.
+                    try {
+                        doc.image(LOGO_PATH, x + (CARD_W - logoW) / 2, y + (CARD_H - logoW) / 2 - 10, { width: logoW });
+                    }
+                    catch (e) {
+                        // Fallback testo se logo manca
+                        doc.fillColor('white').fontSize(14).text('CAMPARI', x, y + CARD_H / 2 - 10, { width: CARD_W, align: 'center' });
+                        doc.text('SODA', x, y + CARD_H / 2 + 5, { width: CARD_W, align: 'center' });
+                    }
+                    // Texture pattern (Cerchietti o righe) - Opzionale, semplificato per ora
+                }
             }
-            if (y > 700) {
-                doc.addPage();
-                y = 50;
+        };
+        // Chuuk tokens in gruppi da 10
+        const chunkSize = 10;
+        for (let i = 0; i < tokens.length; i += chunkSize) {
+            const chunk = tokens.slice(i, i + chunkSize);
+            // --- PAGINA FRONTE ---
+            doc.addPage({ size: 'A4', margin: 0 });
+            for (let j = 0; j < chunk.length; j++) {
+                const token = chunk[j];
+                const row = Math.floor(j / 2);
+                const col = j % 2;
+                const x = START_X + (col * CARD_W);
+                const y = START_Y + (row * CARD_H);
+                // Sfondo Bianco
+                doc.rect(x, y, CARD_W, CARD_H).fill('white');
+                // Bordo di taglio (grigio chiaro)
+                doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.2).stroke('#ccc');
+                // Header: SCANSIONA E VINCI
+                doc.font('Helvetica-Bold').fontSize(14).fillColor('#E3001B'); // Rosso Campari
+                doc.text('SCANSIONA E VINCI', x, y + 25, { width: CARD_W, align: 'center' });
+                // QR Code
+                const playUrl = `${APP_URL}/play?token=${token.token_code}`;
+                const qrData = await qrcode_1.default.toDataURL(playUrl, { margin: 0 });
+                const qrSize = 75;
+                doc.image(qrData, x + (CARD_W - qrSize) / 2, y + 45, { width: qrSize });
+                // Token Code (Monospace)
+                doc.font('Courier-Bold').fontSize(12).fillColor('black');
+                doc.text(`${token.token_code}`, x, y + 125, { width: CARD_W, align: 'center', characterSpacing: 2 });
+                // Angolo Decorativo (Basso Destra) -> Triangolo Rosso
+                doc.save();
+                doc.moveTo(x + CARD_W - 30, y + CARD_H)
+                    .lineTo(x + CARD_W, y + CARD_H)
+                    .lineTo(x + CARD_W, y + CARD_H - 30)
+                    .fill('#E3001B');
+                doc.restore();
             }
+            // --- PAGINA RETRO ---
+            // Sempre una pagina intera di loghi, corrispondente alla griglia fronte
+            drawBackPage();
         }
         doc.end();
     }
