@@ -9,7 +9,7 @@ interface TokenData {
     token_code: string;
     status: string;
     promotion_id: string;
-    usedAt?: string | null;
+    used_at?: string | null;
 }
 
 export default function TokenListTable({ promotionId, limit }: { promotionId: string; limit?: number }) {
@@ -104,7 +104,7 @@ export default function TokenListTable({ promotionId, limit }: { promotionId: st
             {!isLimitedView && (
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-lg font-bold text-gray-800">
-                        Token Generati <span className="text-sm font-normal text-gray-500">({totalTokens} totali)</span>
+                        Token Disponibili <span className="text-sm font-normal text-gray-500">({totalTokens} totali)</span>
                     </h3>
                     <span className="text-xs text-gray-400">
                         Pagina {currentPage} di {totalPages || 1}
@@ -116,25 +116,25 @@ export default function TokenListTable({ promotionId, limit }: { promotionId: st
                 {displayedTokens.map((token) => (
                     <div key={token.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-white hover:shadow-md transition border border-transparent hover:border-gray-100 group">
                         <div className="flex items-center gap-4">
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg shadow-sm ${token.status === 'AVAILABLE' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg shadow-sm ${token.status === 'available' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
                                 }`}>
-                                {token.status === 'AVAILABLE' ? '✓' : '✗'}
+                                {token.status === 'available' ? '✓' : '✗'}
                             </div>
                             <div>
                                 <div className="font-mono font-bold text-gray-700">{token.token_code}</div>
                                 <div className="text-xs text-gray-400">
-                                    {token.status === 'AVAILABLE'
+                                    {token.status === 'available'
                                         ? 'Disponibile'
-                                        : token.usedAt
-                                            ? `Usato il ${new Date(token.usedAt).toLocaleDateString()} alle ${new Date(token.usedAt).toLocaleTimeString()}`
+                                        : token.used_at
+                                            ? `Usato il ${new Date(token.used_at).toLocaleDateString()} alle ${new Date(token.used_at).toLocaleTimeString()}`
                                             : 'Usato (data n/d)'}
                                 </div>
                             </div>
                         </div>
                         <div className="text-right">
-                            <span className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-full ${token.status === 'AVAILABLE' ? 'bg-green-50 text-green-600 border border-green-100' : 'bg-red-50 text-red-600 border border-red-100'
+                            <span className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-full ${token.status === 'available' ? 'bg-green-50 text-green-600 border border-green-100' : 'bg-red-50 text-red-600 border border-red-100'
                                 }`}>
-                                {token.status === 'AVAILABLE' ? 'Attivo' : 'Usato'}
+                                {token.status === 'available' ? 'Attivo' : 'Usato'}
                             </span>
                         </div>
                     </div>
