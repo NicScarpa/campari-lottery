@@ -14,11 +14,25 @@ const CAMPARI_RED = '#E3001B';
 
 type GameState = 'LOADING' | 'PHONE_INPUT' | 'NAME_INPUT' | 'READY' | 'PLAYING' | 'RESULT' | 'ERROR';
 
+interface Prize {
+    id: number;
+    name: string;
+    initial_stock: number;
+    remaining_stock: number;
+}
+
+interface PrizeAssignment {
+    id: number;
+    prize_code: string;
+    redeemed: boolean;
+    redeemed_at: string | null;
+    prize_type?: Prize;
+}
+
 interface PlayResult {
     win: boolean;
-    prize: any;
-    assignment: any;
-    // leaderboard: any[]; // Non serve più qui, lo gestisce il componente
+    prize: Prize | null;
+    assignment: PrizeAssignment | null;
     userRank: number;
     userTotalPlays: number;
 }
@@ -33,7 +47,7 @@ function PlayContent() {
 
     // Dati
     const [promotionId, setPromotionId] = useState('');
-    const [prize, setPrize] = useState<any>(null);
+    const [prize, setPrize] = useState<PrizeAssignment | null>(null);
     // const [leaderboard, setLeaderboard] = useState<any[]>([]); // Rimosso
     // const [finalResult, setFinalResult] = useState<PlayResult | null>(null); // Rimosso uso diretto
 
@@ -200,7 +214,7 @@ function PlayContent() {
 
             interface PlayResponse {
                 isWinner: boolean;
-                prizeAssignment: any; // Keeping any on assignment for now as structure depends on backend, but defining top level
+                prizeAssignment: PrizeAssignment | null;
                 error?: string;
             }
 

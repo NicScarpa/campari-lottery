@@ -157,7 +157,9 @@ export default function PromotionSelector({
             if (res.ok) {
                 setSuccessMessage(`Promozione eliminata.`);
                 const remaining = promotions.filter(p => String(p.id) !== String(currentPromotion.id));
-                onSelectPromotion(remaining[0].id);
+                if (remaining.length > 0) {
+                    onSelectPromotion(remaining[0].id);
+                }
                 onUpdatePromotions();
                 onForceDataRefresh();
             } else { setErrorMessage('Errore eliminazione.'); }

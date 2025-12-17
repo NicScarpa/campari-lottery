@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import crypto from 'crypto';
+import rateLimit from 'express-rate-limit';
 import { PrismaClient } from '@prisma/client';
 import { ProbabilityEngine } from './services/ProbabilityEngine';
 import bcrypt from 'bcrypt';
@@ -67,20 +69,55 @@ const isValidPrizeTypesArray = (prizeTypes: unknown): boolean => {
   );
 };
 
-// Configurazione CORS
-app.use(cors({
-  origin: [
+// Configurazione CORS - origins configurabili via env
+const CORS_ORIGINS = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim())
+  : [
     APP_URL,
     'http://localhost:3000',
-    'https://new-frontend-camparino-week.up.railway.app',  // Railway frontend domain
-    'https://campari-lottery-git-main-nicola-scarpas-projects.vercel.app',  // Vercel branch domain
-    'https://campari-lottery.vercel.app'  // Vercel production domain
-  ],
+    'https://new-frontend-camparino-week.up.railway.app',
+    'https://campari-lottery-git-main-nicola-scarpas-projects.vercel.app',
+    'https://campari-lottery.vercel.app'
+  ];
+
+app.use(cors({
+  origin: CORS_ORIGINS,
   credentials: true
 }));
 
 app.use(express.json());
 app.use(cookieParser());
+
+// --- RATE LIMITING ---
+// Limiter generale per tutte le API
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minuti
+  max: 100, // 100 richieste per IP per finestra
+  message: { error: 'Troppe richieste, riprova tra qualche minuto' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Limiter più restrittivo per login (prevenzione brute force)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minuti
+  max: 10, // 10 tentativi di login per IP per finestra
+  message: { error: 'Troppi tentativi di login, riprova tra 15 minuti' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Limiter per le giocate (prevenzione abusi)
+const playLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minuto
+  max: 10, // 10 giocate per IP per minuto
+  message: { error: 'Troppe richieste di gioco, attendi un momento' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Applica rate limiting generale a tutte le API
+app.use('/api/', generalLimiter);
 
 // --- HEALTH CHECK ---
 app.get('/health', (req, res) => {
@@ -91,7 +128,7 @@ app.get('/health', (req, res) => {
 // 1. AUTHENTICATION (Login / Logout / Me)
 // ==========================================
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   const { username, password } = req.body;
   try {
     const user = await prisma.staffUser.findUnique({ where: { username } });
@@ -152,13 +189,31 @@ app.get('/api/promotions/list', authenticateToken, authorizeRole('admin'), async
 // Crea Promozione
 app.post('/api/promotions/create', authenticateToken, authorizeRole('admin'), async (req, res) => {
   const { name, plannedTokenCount, startDatetime, endDatetime } = req.body;
+
+  // Validazione input
+  if (!name || !plannedTokenCount || !startDatetime || !endDatetime) {
+    return res.status(400).json({ error: 'Tutti i campi sono obbligatori' });
+  }
+
+  const startDate = new Date(startDatetime);
+  const endDate = new Date(endDatetime);
+
+  // Validazione date
+  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+    return res.status(400).json({ error: 'Formato date non valido' });
+  }
+
+  if (startDate >= endDate) {
+    return res.status(400).json({ error: 'La data di fine deve essere successiva alla data di inizio' });
+  }
+
   try {
     const promo = await prisma.promotion.create({
       data: {
         name,
         planned_token_count: Number(plannedTokenCount),
-        start_datetime: new Date(startDatetime),
-        end_datetime: new Date(endDatetime),
+        start_datetime: startDate,
+        end_datetime: endDate,
         status: 'DRAFT'
       }
     });
@@ -173,6 +228,21 @@ app.post('/api/promotions/create', authenticateToken, authorizeRole('admin'), as
 app.put('/api/promotions/update/:id', authenticateToken, authorizeRole('admin'), async (req, res) => {
   const { id } = req.params;
   const { name, plannedTokenCount, status, start_datetime, end_datetime } = req.body;
+
+  // Validazione date se fornite
+  if (start_datetime && end_datetime) {
+    const startDate = new Date(start_datetime);
+    const endDate = new Date(end_datetime);
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ error: 'Formato date non valido' });
+    }
+
+    if (startDate >= endDate) {
+      return res.status(400).json({ error: 'La data di fine deve essere successiva alla data di inizio' });
+    }
+  }
+
   try {
     const promo = await prisma.promotion.update({
       where: { id: Number(id) },
@@ -180,8 +250,8 @@ app.put('/api/promotions/update/:id', authenticateToken, authorizeRole('admin'),
         name,
         planned_token_count: Number(plannedTokenCount),
         status,
-        start_datetime: new Date(start_datetime),
-        end_datetime: new Date(end_datetime)
+        start_datetime: start_datetime ? new Date(start_datetime) : undefined,
+        end_datetime: end_datetime ? new Date(end_datetime) : undefined
       }
     });
     res.json({ success: true, promotion: promo });
@@ -650,7 +720,7 @@ app.post('/api/admin/generate-tokens', authenticateToken, authorizeRole('admin')
   try {
     const codesToCreate = [];
     for (let i = 0; i < count; i++) {
-      const code = (prefix || '') + Math.random().toString(36).substring(2, 8).toUpperCase();
+      const code = (prefix || '') + crypto.randomBytes(4).toString('hex').toUpperCase();
       codesToCreate.push({
         promotion_id: Number(promotionId),
         token_code: code,
@@ -1090,7 +1160,7 @@ app.post('/api/customer/register', async (req, res) => {
 });
 
 // Play - PROTETTO DA AUTENTICAZIONE
-app.post('/api/customer/play', authenticateCustomer, async (req: AuthRequest, res: any) => {
+app.post('/api/customer/play', playLimiter, authenticateCustomer, async (req: AuthRequest, res: any) => {
   const { promotion_id, token_code } = req.body;
 
   // SICUREZZA: Usa il customer_id dal token JWT, NON dal body della richiesta!

@@ -257,7 +257,7 @@ export default function AdminDashboardPage() {
     if (!currentPromotion) return <div>Errore stato dashboard. Ricarica la pagina.</div>;
 
     return (
-        <div className="flex bg-[#F5F5F7] min-h-screen font-sans overflow-hidden">
+        <div className="flex flex-col md:flex-row bg-[#F5F5F7] min-h-screen font-sans overflow-hidden">
             {/* Sidebar */}
             <Sidebar
                 currentView={currentView}
@@ -266,9 +266,25 @@ export default function AdminDashboardPage() {
             />
 
             {/* Main Content */}
-            <main className="flex-1 flex flex-col h-screen overflow-hidden relative z-0">
-                {/* Header / Top Bar */}
-                <div className="bg-white/80 backdrop-blur-md sticky top-0 z-30 px-6 py-4 flex justify-between items-center border-b border-gray-100">
+            <main className="flex-1 flex flex-col h-screen overflow-hidden relative z-0 pt-16 md:pt-0">
+                {/* Mobile Header - Shows promotion selector on mobile */}
+                <div className="md:hidden bg-white/95 backdrop-blur-md sticky top-16 z-20 px-4 py-3 border-b border-gray-100">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-lg font-bold text-gray-800 capitalize">{currentView}</h2>
+                        <select
+                            value={selectedPromotionId}
+                            onChange={(e) => setSelectedPromotionId(e.target.value)}
+                            className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-800 max-w-[150px]"
+                        >
+                            {promotions.map((p) => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+
+                {/* Desktop Header / Top Bar */}
+                <div className="hidden md:flex bg-white/80 backdrop-blur-md sticky top-0 z-30 px-6 py-4 justify-between items-center border-b border-gray-100">
                     <div>
                         <h2 className="text-xl font-bold text-gray-800 capitalize">{currentView}</h2>
                         <p className="text-xs text-gray-400">Bentornato Staff</p>

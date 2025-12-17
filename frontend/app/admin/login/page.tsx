@@ -63,7 +63,7 @@ export default function LoginPage() {
   // -------------------------------------------------------------------
 
 
-  const handleLogin = async (e: any) => {
+  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError('');
 
@@ -124,6 +124,7 @@ export default function LoginPage() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="mt-1 block w-full border border-gray-300 rounded-md p-2 text-black"
+              autoComplete="username"
               required
             />
           </div>
@@ -134,6 +135,7 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="mt-1 block w-full border border-gray-300 rounded-md p-2 text-black"
+              autoComplete="current-password"
               required
             />
           </div>

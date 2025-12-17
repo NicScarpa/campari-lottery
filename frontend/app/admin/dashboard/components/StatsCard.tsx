@@ -89,7 +89,9 @@ export default function StatsCard({ promotionId }: { promotionId: string }) {
         return <p className="text-gray-500 italic">Nessun dato disponibile.</p>;
     }
 
-    const percentageUsed = (stats.tokenStats.used / stats.tokenStats.total) * 100;
+    const percentageUsed = stats.tokenStats.total > 0
+        ? (stats.tokenStats.used / stats.tokenStats.total) * 100
+        : 0;
 
     return (
         <div className="bg-[#1a1a1a] text-white p-6 md:p-8 rounded-[2rem] shadow-xl relative overflow-hidden h-full flex flex-col justify-between group">

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import { Josefin_Sans } from "next/font/google"; 
+import { Josefin_Sans } from "next/font/google";
 import "./globals.css";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 const josefin = Josefin_Sans({
   subsets: ["latin"],
@@ -24,11 +25,13 @@ export default function RootLayout({
         (come ColorZilla o Password Manager) iniettano attributi nel body,
         causando falsi positivi negli errori di Next.js.
       */}
-      <body 
+      <body
         className={`${josefin.className} antialiased`}
         suppressHydrationWarning={true}
       >
-        {children}
+        <ErrorBoundary>
+          {children}
+        </ErrorBoundary>
       </body>
     </html>
   );

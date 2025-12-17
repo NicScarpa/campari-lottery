@@ -31,7 +31,8 @@ export default function LiveLeaderboard({ promotionId, currentCustomerId }: Prop
 
     // Effettua la chiamata API per recuperare la classifica
     useEffect(() => {
-        if (promotionId && currentCustomerId) {
+        // Verifica che entrambi i valori siano definiti (currentCustomerId può essere 0)
+        if (promotionId && currentCustomerId !== undefined && currentCustomerId !== null) {
             setLoading(true);
             setError(null);
 
