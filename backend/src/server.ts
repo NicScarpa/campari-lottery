@@ -89,19 +89,22 @@ app.use(express.json());
 app.use(cookieParser());
 
 // --- RATE LIMITING ---
-// Limiter generale per tutte le API
+const isDev = process.env.NODE_ENV !== 'production';
+
+// Limiter generale per tutte le API (più permissivo per uso normale)
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minuti
-  max: 100, // 100 richieste per IP per finestra
+  max: isDev ? 1000 : 500, // 500 richieste in prod, 1000 in dev
   message: { error: 'Troppe richieste, riprova tra qualche minuto' },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => isDev && process.env.SKIP_RATE_LIMIT === 'true', // Bypass opzionale in dev
 });
 
 // Limiter più restrittivo per login (prevenzione brute force)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minuti
-  max: 10, // 10 tentativi di login per IP per finestra
+  max: isDev ? 50 : 10, // 10 tentativi in prod, 50 in dev
   message: { error: 'Troppi tentativi di login, riprova tra 15 minuti' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -110,7 +113,7 @@ const authLimiter = rateLimit({
 // Limiter per le giocate (prevenzione abusi)
 const playLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minuto
-  max: 10, // 10 giocate per IP per minuto
+  max: isDev ? 60 : 30, // 30 giocate/min in prod, 60 in dev
   message: { error: 'Troppe richieste di gioco, attendi un momento' },
   standardHeaders: true,
   legacyHeaders: false,
