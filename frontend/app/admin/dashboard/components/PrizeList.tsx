@@ -13,9 +13,10 @@ interface Prize {
 interface Props {
     promotionId: string;
     onPrizeChange: () => void;
+    refreshKey?: number; // Forza re-fetch quando cambia
 }
 
-export default function PrizeList({ promotionId, onPrizeChange }: Props) {
+export default function PrizeList({ promotionId, onPrizeChange, refreshKey }: Props) {
     const [prizes, setPrizes] = useState<Prize[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -61,7 +62,7 @@ export default function PrizeList({ promotionId, onPrizeChange }: Props) {
 
     useEffect(() => {
         fetchPrizes();
-    }, [fetchPrizes]);
+    }, [fetchPrizes, refreshKey]);
 
     const clearMessages = () => {
         setError(null);

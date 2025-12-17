@@ -15,6 +15,8 @@ interface UsedTokenData {
         phone_number: string;
     } | null;
     prize_name: string | null;
+    prize_code: string | null;
+    redeemed_at: string | null;
 }
 
 export default function UsedTokensList({ promotionId, limit = 5 }: { promotionId: string; limit?: number }) {
@@ -78,11 +80,7 @@ export default function UsedTokensList({ promotionId, limit = 5 }: { promotionId
         });
     };
 
-    const maskPhoneNumber = (phone: string) => {
-        if (phone.length <= 4) return phone;
-        return '*** *** ' + phone.slice(-4);
-    };
-
+    
     if (loading) return <div className="text-gray-400 text-xs mt-4 animate-pulse">Caricamento...</div>;
     if (error) return <div className="text-red-500 text-xs mt-4">{error}</div>;
 
@@ -149,17 +147,46 @@ export default function UsedTokensList({ promotionId, limit = 5 }: { promotionId
                                 <div>
                                     <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Telefono</p>
                                     <p className="text-sm font-mono text-gray-600">
-                                        {maskPhoneNumber(token.customer.phone_number)}
+                                        {token.customer.phone_number}
                                     </p>
                                 </div>
                             </div>
                             {token.is_winner && token.prize_name && (
-                                <div className="pt-2 border-t border-gray-100">
-                                    <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Premio Vinto</p>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-lg">🎁</span>
-                                        <p className="text-sm font-semibold text-green-600">{token.prize_name}</p>
+                                <div className="pt-2 border-t border-gray-100 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Premio Vinto</p>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-lg">🎁</span>
+                                                <p className="text-sm font-semibold text-green-600">{token.prize_name}</p>
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            {token.redeemed_at ? (
+                                                <span className="px-2 py-1 text-[10px] font-bold uppercase rounded-full bg-green-100 text-green-700 border border-green-200">
+                                                    Riscosso
+                                                </span>
+                                            ) : (
+                                                <span className="px-2 py-1 text-[10px] font-bold uppercase rounded-full bg-yellow-100 text-yellow-700 border border-yellow-200">
+                                                    Da ritirare
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
+                                    {token.prize_code && (
+                                        <div>
+                                            <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Codice Redeem</p>
+                                            <p className="text-sm font-mono font-bold text-gray-800 bg-gray-100 px-2 py-1 rounded inline-block">
+                                                {token.prize_code}
+                                            </p>
+                                        </div>
+                                    )}
+                                    {token.redeemed_at && (
+                                        <div>
+                                            <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Riscosso il</p>
+                                            <p className="text-xs text-gray-600">{formatDateTime(token.redeemed_at)}</p>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>

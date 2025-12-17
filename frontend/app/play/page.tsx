@@ -72,10 +72,11 @@ function PlayContent() {
             const data = await res.json();
 
             if (data.exists) {
-                // Utente esistente: pre-compila i campi
+                // Utente esistente: pre-compila i campi e auto-accetta termini (già accettati)
                 setExistingUser({ firstName: data.firstName, lastName: data.lastName });
                 setFirstName(data.firstName);
                 setLastName(data.lastName);
+                setAcceptTerms(true); // Auto-check: ha già accettato in precedenza
             } else {
                 // Nuovo utente: reset dei campi
                 setExistingUser(null);
@@ -308,15 +309,15 @@ function PlayContent() {
                                         <input type="text" required value={lastName} onChange={e => setLastName(e.target.value)} className="w-full border-b-2 border-black bg-gray-50 p-3 font-bold focus:outline-none focus:bg-red-50" placeholder="COGNOME" />
                                     </div>
                                     <div className="space-y-3 text-sm font-bold">
-                                        <label className="flex items-start gap-3 cursor-pointer">
-                                            <input type="checkbox" required checked={acceptTerms} onChange={e => setAcceptTerms(e.target.checked)} className="mt-1 w-5 h-5 accent-black" />
-                                            <span>Accetto <button type="button" onClick={() => openLegal('terms')} className="underline">Regolamento</button> e <button type="button" onClick={() => openLegal('privacy')} className="underline">Privacy</button></span>
+                                        <label className="flex items-start gap-3 text-gray-400">
+                                            <input type="checkbox" checked={true} disabled className="mt-1 w-5 h-5 accent-black opacity-50" />
+                                            <span><button type="button" onClick={() => openLegal('terms')} className="underline">Regolamento</button> e <button type="button" onClick={() => openLegal('privacy')} className="underline">Privacy</button> già accettati</span>
                                         </label>
                                     </div>
                                     <button type="submit" className="w-full bg-[#E3001B] text-white font-bold text-xl py-4 hover:bg-black hover:text-white transition-colors uppercase tracking-widest border-2 border-transparent hover:border-white">
                                         GIOCA
                                     </button>
-                                    <button type="button" onClick={() => { setExistingUser(null); setGameState('PHONE_INPUT'); }} className="w-full text-gray-400 text-xs underline">
+                                    <button type="button" onClick={() => { setExistingUser(null); setAcceptTerms(false); setGameState('PHONE_INPUT'); }} className="w-full text-gray-400 text-xs underline">
                                         Non sono io, cambia numero
                                     </button>
                                 </form>
@@ -400,14 +401,14 @@ function PlayContent() {
                         ) : (
                             // LOSE
                             <div className="bg-black text-white border-4 border-white p-8 text-center shadow-[8px_8px_0px_0px_rgba(255,255,255,0.2)] mb-8">
-                                <h2 className="text-4xl font-bold uppercase tracking-tighter mb-4 text-[#E3001B]">PECCATO!</h2>
+                                <h2 className="text-4xl font-bold uppercase tracking-tighter mb-4 text-[#E3001B]">NON HAI VINTO</h2>
                                 <p className="font-bold text-lg mb-6 leading-relaxed uppercase">
                                     Niente gadget questa volta.<br />
                                     Ma un Campari Soda<br />è sempre una vittoria.
                                 </p>
-                                <div className="inline-block border-2 border-white px-4 py-2 text-xs font-bold uppercase tracking-widest">
-                                    Ritenta col prossimo
-                                </div>
+                                <p className="text-sm font-light tracking-wide">
+                                    Ritenta con il prossimo Camparino 😜
+                                </p>
                             </div>
                         )}
 

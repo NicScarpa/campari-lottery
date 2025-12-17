@@ -23,7 +23,7 @@ export default function Sidebar({ currentView, onChangeView, onLogout }: Sidebar
         <>
             {/* Mobile Header / Toggle */}
             <div className="md:hidden flex justify-between items-center bg-[#1a1a1a] p-4 text-white sticky top-0 z-50 shadow-md">
-                <div className="font-bold text-xl tracking-tighter uppercase">Campari Soda</div>
+                <img src="/camparisoda.png" alt="Campari Soda" className="h-8 w-auto" />
                 <button onClick={() => setIsOpen(!isOpen)} className="p-2">
                     {isOpen ? (
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -41,10 +41,8 @@ export default function Sidebar({ currentView, onChangeView, onLogout }: Sidebar
       `}>
 
                 {/* Logo Area */}
-                <div className="p-8 hidden md:block">
-                    <h1 className="text-2xl font-black uppercase tracking-tighter text-white">
-                        Campari<br /><span className="text-[#E3001B]">Soda</span>
-                    </h1>
+                <div className="p-6 hidden md:block">
+                    <img src="/camparisoda.png" alt="Campari Soda" className="w-32 mx-auto" />
                 </div>
 
                 {/* Navigation */}

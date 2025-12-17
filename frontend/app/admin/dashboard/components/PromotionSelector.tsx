@@ -35,7 +35,11 @@ export default function PromotionSelector({
     // Stati per la creazione
     const [newName, setNewName] = useState('');
     const [newPlannedTokenCount, setNewPlannedTokenCount] = useState(100);
-    const [newStartDatetime, setNewStartDatetime] = useState('');
+    // Default: data/ora attuale per inizio
+    const [newStartDatetime, setNewStartDatetime] = useState(() => {
+        const now = new Date();
+        return now.toISOString().slice(0, 16); // Formato datetime-local: YYYY-MM-DDTHH:mm
+    });
     const [newEndDatetime, setNewEndDatetime] = useState('');
 
     React.useEffect(() => {
@@ -65,6 +69,10 @@ export default function PromotionSelector({
                 return;
             }
 
+            // Converti datetime-local in ISO string per il backend
+            const startISO = new Date(newStartDatetime).toISOString();
+            const endISO = new Date(newEndDatetime).toISOString();
+
             const res = await fetch(getApiUrl('api/promotions/create'), {
                 method: 'POST',
                 headers: {
@@ -75,8 +83,8 @@ export default function PromotionSelector({
                 body: JSON.stringify({
                     name: newName,
                     plannedTokenCount: newPlannedTokenCount,
-                    startDatetime: newStartDatetime,
-                    endDatetime: newEndDatetime,
+                    startDatetime: startISO,
+                    endDatetime: endISO,
                 }),
             });
             const data = await res.json();
@@ -148,7 +156,7 @@ export default function PromotionSelector({
             });
             if (res.ok) {
                 setSuccessMessage(`Promozione eliminata.`);
-                const remaining = promotions.filter(p => p.id !== currentPromotion.id);
+                const remaining = promotions.filter(p => String(p.id) !== String(currentPromotion.id));
                 onSelectPromotion(remaining[0].id);
                 onUpdatePromotions();
                 onForceDataRefresh();
@@ -251,12 +259,12 @@ export default function PromotionSelector({
                     </div>
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                          <div>
-                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Inizio (ISO Date)</label>
-                             <input type="text" value={newStartDatetime} onChange={(e) => setNewStartDatetime(e.target.value)} className="w-full border rounded-lg p-2.5 text-black text-sm" required placeholder="2025-01-01T00:00:00Z" />
+                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Data e Ora Inizio</label>
+                             <input type="datetime-local" value={newStartDatetime} onChange={(e) => setNewStartDatetime(e.target.value)} className="w-full border rounded-lg p-2.5 text-black text-sm" required />
                          </div>
                          <div>
-                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Fine (ISO Date)</label>
-                             <input type="text" value={newEndDatetime} onChange={(e) => setNewEndDatetime(e.target.value)} className="w-full border rounded-lg p-2.5 text-black text-sm" required placeholder="2025-12-31T23:59:59Z" />
+                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Data e Ora Fine</label>
+                             <input type="datetime-local" value={newEndDatetime} onChange={(e) => setNewEndDatetime(e.target.value)} className="w-full border rounded-lg p-2.5 text-black text-sm" required />
                          </div>
                      </div>
                     <button type="submit" className="w-full bg-indigo-600 text-white font-bold py-3 rounded-lg hover:bg-indigo-700 transition">Crea Promozione</button>

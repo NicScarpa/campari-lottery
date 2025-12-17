@@ -565,7 +565,9 @@ app.get('/api/admin/used-tokens/:promotionId', authenticateToken, authorizeRole(
         last_name: token.play.customer.last_name,
         phone_number: token.play.customer.phone_number
       } : null,
-      prize_name: token.play?.prize_assignment?.prize_type?.name || null
+      prize_name: token.play?.prize_assignment?.prize_type?.name || null,
+      prize_code: token.play?.prize_assignment?.prize_code || null,
+      redeemed_at: token.play?.prize_assignment?.redeemed_at || null
     }));
 
     res.json({
@@ -1213,6 +1215,30 @@ app.post('/api/customer/play', authenticateCustomer, async (req: AuthRequest, re
     if (err.message === 'TOKEN_USED') return res.status(400).json({ error: 'Token already used' });
     if (err.message === 'TOKEN_MISMATCH') return res.status(400).json({ error: 'Token does not belong to this promotion' });
     res.status(500).json({ error: 'Transaction failed' });
+  }
+});
+
+// Public Promotion Info (per pagina classifica pubblica)
+app.get('/api/promotions/public/:promotionId', async (req, res) => {
+  const { promotionId } = req.params;
+
+  try {
+    const promotion = await prisma.promotion.findUnique({
+      where: { id: Number(promotionId) },
+      select: {
+        name: true,
+        status: true
+      }
+    });
+
+    if (!promotion) {
+      return res.status(404).json({ error: 'Promozione non trovata' });
+    }
+
+    res.json(promotion);
+  } catch (err) {
+    console.error('Errore fetch promotion public:', err);
+    res.status(500).json({ error: 'Errore server' });
   }
 });
 

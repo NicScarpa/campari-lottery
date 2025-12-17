@@ -11,6 +11,7 @@ import PromotionSelector from './components/PromotionSelector';
 import PlayLogViewer from './components/PlayLogViewer';
 import PrizeOverview from './components/PrizeOverview';
 import Sidebar from './components/Sidebar';
+import AdminLeaderboard from './components/AdminLeaderboard';
 import { getApiUrl } from '../../lib/api'; // <--- IMPORTANTE
 
 export interface Promotion {
@@ -76,9 +77,9 @@ export default function AdminDashboardPage() {
             setPromotions(data);
 
             if (data.length > 0 && !selectedPromotionId) {
-                setSelectedPromotionId(data[0].id);
-            } else if (data.length > 0 && selectedPromotionId && !data.find(p => p.id === selectedPromotionId)) {
-                setSelectedPromotionId(data[0].id);
+                setSelectedPromotionId(String(data[0].id));
+            } else if (data.length > 0 && selectedPromotionId && !data.find(p => String(p.id) === String(selectedPromotionId))) {
+                setSelectedPromotionId(String(data[0].id));
             }
         } catch (error) {
             console.error(error);
@@ -251,7 +252,7 @@ export default function AdminDashboardPage() {
         );
     }
 
-    const currentPromotion = promotions.find(p => p.id === selectedPromotionId) || promotions[0];
+    const currentPromotion = promotions.find(p => String(p.id) === String(selectedPromotionId)) || promotions[0];
 
     if (!currentPromotion) return <div>Errore stato dashboard. Ricarica la pagina.</div>;
 
@@ -318,6 +319,31 @@ export default function AdminDashboardPage() {
                                         limit={5}
                                     />
                                 </div>
+
+                                {/* Live Leaderboard */}
+                                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-2xl">🏆</span>
+                                            <h3 className="font-bold text-gray-800">Classifica Live</h3>
+                                        </div>
+                                        <a
+                                            href={`/classifica/${currentPromotion.id}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-sm text-[#E3001B] font-medium hover:underline flex items-center gap-1"
+                                        >
+                                            Pagina Pubblica
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                            </svg>
+                                        </a>
+                                    </div>
+                                    <AdminLeaderboard
+                                        promotionId={currentPromotion.id}
+                                        refreshKey={dataRefreshKey}
+                                    />
+                                </div>
                             </>
                         )}
 
@@ -367,6 +393,7 @@ export default function AdminDashboardPage() {
                                 <PrizeList
                                     promotionId={currentPromotion.id}
                                     onPrizeChange={forceDataRefresh}
+                                    refreshKey={dataRefreshKey}
                                 />
                             </div>
                         )}
