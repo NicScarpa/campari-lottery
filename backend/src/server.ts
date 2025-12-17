@@ -627,44 +627,12 @@ app.post('/api/admin/generate-tokens', authenticateToken, authorizeRole('admin')
     const START_X = (PAGE_W - CONTENT_W) / 2;
     const START_Y = (PAGE_H - CONTENT_H) / 2;
 
-    // Paths risorse
-    const LOGO_PATH = path.join(__dirname, '../../frontend/public/logocamparisoda_bianco.png');
-    const TEXTURE_PATH = path.join(__dirname, '../../frontend/public/bottiglia.png');
-    const TEXTURE_PATH_FRONT = path.join(__dirname, '../../frontend/public/bottiglia_bianca.png');
-    const FONT_TITLE = path.join(__dirname, '../fonts/JosefinSans-Bold.ttf');
+    // Paths risorse - Template predesegnati
+    const FRONT_TEMPLATE = path.join(__dirname, '../../frontend/public/fronte-token.png');
+    const BACK_TEMPLATE = path.join(__dirname, '../../frontend/public/retro-token.png');
     const FONT_CODE = path.join(__dirname, '../fonts/Roboto-Medium.ttf');
 
-    // Colore Campari
-    const CAMPARI_RED = '#D31418';
-
-    // Helper: Disegna Pattern Bottiglie (stile CSS background-repeat)
-    const drawPattern = (x: number, y: number, w: number, h: number, opacity: number, texturePath: string) => {
-      doc.save();
-      doc.rect(x, y, w, h).clip();
-      doc.opacity(opacity);
-
-      // Pattern size: 12mm come da template HTML
-      const BOTTLE_W = 12 * MM_TO_PT; // ~34pt
-      const BOTTLE_H = BOTTLE_W * 2.5; // Proporzione bottiglia (altezza > larghezza)
-
-      // Calcola quante colonne e righe servono per coprire l'area
-      const cols = Math.ceil(w / BOTTLE_W) + 1;
-      const rows = Math.ceil(h / BOTTLE_H) + 1;
-
-      // Disegna pattern a griglia uniforme (come CSS background-repeat)
-      for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < cols; col++) {
-          try {
-            const bX = x + (col * BOTTLE_W);
-            const bY = y + (row * BOTTLE_H);
-            doc.image(texturePath, bX, bY, { width: BOTTLE_W });
-          } catch (e) { /* Ignora errori immagine */ }
-        }
-      }
-      doc.restore();
-    };
-
-    // Funzione: Disegna pagina Retro (12 card)
+    // Funzione: Disegna pagina Retro (solo immagine template)
     const drawBackPage = (cardCount: number) => {
       doc.addPage({ size: 'A4', margin: 0 });
 
@@ -674,23 +642,18 @@ app.post('/api/admin/generate-tokens', authenticateToken, authorizeRole('admin')
         const x = START_X + (col * CARD_W);
         const y = START_Y + (row * CARD_H);
 
-        // 1. Sfondo Rosso Campari
-        doc.rect(x, y, CARD_W, CARD_H).fill(CAMPARI_RED);
-
-        // 2. Pattern tono su tono (opacity 0.3) - usa bottiglia rossa per retro
-        drawPattern(x, y, CARD_W, CARD_H, 0.3, TEXTURE_PATH);
-
-        // 3. Logo Bianco Centrato
-        const logoW = 100;
+        // Immagine retro scalata a 50x80mm
         try {
-          doc.image(LOGO_PATH, x + (CARD_W - logoW) / 2, y + (CARD_H - logoW) / 2, { width: logoW });
+          doc.image(BACK_TEMPLATE, x, y, { width: CARD_W, height: CARD_H });
         } catch (e) {
-          doc.fillColor('white').font('Helvetica-Bold').fontSize(16);
-          doc.text('CAMPARI SODA', x, y + CARD_H / 2 - 10, { width: CARD_W, align: 'center' });
+          doc.rect(x, y, CARD_W, CARD_H).fill('#D31418');
         }
 
-        // 4. Bordo guida taglio
-        doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.5).stroke('white');
+        // Linea di taglio tratteggiata
+        doc.save();
+        doc.dash(5, { space: 3 });
+        doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.5).stroke('#999999');
+        doc.restore();
       }
     };
 
@@ -708,56 +671,45 @@ app.post('/api/admin/generate-tokens', authenticateToken, authorizeRole('admin')
         const x = START_X + (col * CARD_W);
         const y = START_Y + (row * CARD_H);
 
-        // 1. Sfondo Bianco
-        doc.rect(x, y, CARD_W, CARD_H).fill('white');
-
-        // 2. Pattern filigrana leggera (opacity 0.06) - usa bottiglia bianca per effetto grayscale
-        drawPattern(x, y, CARD_W, CARD_H, 0.06, TEXTURE_PATH_FRONT);
-
-        // 3. Bordo guida taglio
-        doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.2).stroke('#ddd');
-
-        // 4. Header: SCANSIONA E VINCI
-        doc.fillColor(CAMPARI_RED);
+        // 1. Immagine fronte come sfondo (scalata a 50x80mm)
         try {
-          doc.font(FONT_TITLE).fontSize(20);
+          doc.image(FRONT_TEMPLATE, x, y, { width: CARD_W, height: CARD_H });
         } catch (e) {
-          doc.font('Helvetica-Bold').fontSize(20);
+          doc.rect(x, y, CARD_W, CARD_H).fill('white');
         }
-        const textY = y + 18;
-        doc.text('SCANSIONA', x, textY, { width: CARD_W, align: 'center', lineGap: -4 });
-        doc.text('E VINCI', x, textY + 20, { width: CARD_W, align: 'center' });
 
-        // 5. QR Code con padding bianco
+        // 2. QR Code centrato verticalmente (nella zona centrale del template)
         const playUrl = `${APP_URL}/play?token=${token.token_code}`;
         const qrData = await QRCode.toDataURL(playUrl, { margin: 1, width: 200 });
-        const qrSize = 85;
+        const qrSize = 75 * MM_TO_PT / 2.83465; // ~75pt per QR leggibile
         const qrX = x + (CARD_W - qrSize) / 2;
-        const qrY = textY + 50;
+        const qrY = y + (CARD_H * 0.35); // Posizionato al 35% dall'alto
 
-        // Background bianco per QR
-        doc.rect(qrX - 4, qrY - 4, qrSize + 8, qrSize + 8).fill('white');
+        // Background bianco semi-trasparente per QR + codice
+        const boxPadding = 8;
+        const boxHeight = qrSize + 30; // Spazio per QR + codice
+        doc.save();
+        doc.opacity(0.9);
+        doc.roundedRect(qrX - boxPadding, qrY - boxPadding, qrSize + boxPadding * 2, boxHeight + boxPadding, 5).fill('white');
+        doc.restore();
+
+        // QR Code
         doc.image(qrData, qrX, qrY, { width: qrSize });
 
-        // 6. Token Code
+        // 3. Token Code sotto il QR
         doc.fillColor('black');
         try {
-          doc.font(FONT_CODE).fontSize(11);
+          doc.font(FONT_CODE).fontSize(10);
         } catch (e) {
-          doc.font('Courier').fontSize(11);
+          doc.font('Courier').fontSize(10);
         }
-        // Background bianco per codice
         const codeY = qrY + qrSize + 8;
-        doc.rect(x + 20, codeY - 2, CARD_W - 40, 16).fill('white');
-        doc.fillColor('black');
         doc.text(token.token_code, x, codeY, { width: CARD_W, align: 'center', characterSpacing: 1 });
 
-        // 7. Triangolo decorativo angolo in basso a destra
+        // 4. Linea di taglio tratteggiata
         doc.save();
-        doc.moveTo(x + CARD_W - 25, y + CARD_H)
-          .lineTo(x + CARD_W, y + CARD_H)
-          .lineTo(x + CARD_W, y + CARD_H - 25)
-          .fill(CAMPARI_RED);
+        doc.dash(5, { space: 3 });
+        doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.5).stroke('#999999');
         doc.restore();
       }
 
@@ -817,44 +769,12 @@ app.get('/api/admin/tokens/pdf/:promotionId', authenticateToken, authorizeRole('
     const START_X = (PAGE_W - CONTENT_W) / 2;
     const START_Y = (PAGE_H - CONTENT_H) / 2;
 
-    // Paths risorse
-    const LOGO_PATH = path.join(__dirname, '../../frontend/public/logocamparisoda_bianco.png');
-    const TEXTURE_PATH = path.join(__dirname, '../../frontend/public/bottiglia.png');
-    const TEXTURE_PATH_FRONT = path.join(__dirname, '../../frontend/public/bottiglia_bianca.png');
-    const FONT_TITLE = path.join(__dirname, '../fonts/JosefinSans-Bold.ttf');
+    // Paths risorse - Template predesegnati
+    const FRONT_TEMPLATE = path.join(__dirname, '../../frontend/public/fronte-token.png');
+    const BACK_TEMPLATE = path.join(__dirname, '../../frontend/public/retro-token.png');
     const FONT_CODE = path.join(__dirname, '../fonts/Roboto-Medium.ttf');
 
-    // Colore Campari
-    const CAMPARI_RED = '#D31418';
-
-    // Helper: Disegna Pattern Bottiglie (stile CSS background-repeat)
-    const drawPattern = (x: number, y: number, w: number, h: number, opacity: number, texturePath: string) => {
-      doc.save();
-      doc.rect(x, y, w, h).clip();
-      doc.opacity(opacity);
-
-      // Pattern size: 12mm come da template HTML
-      const BOTTLE_W = 12 * MM_TO_PT; // ~34pt
-      const BOTTLE_H = BOTTLE_W * 2.5; // Proporzione bottiglia (altezza > larghezza)
-
-      // Calcola quante colonne e righe servono per coprire l'area
-      const cols = Math.ceil(w / BOTTLE_W) + 1;
-      const rows = Math.ceil(h / BOTTLE_H) + 1;
-
-      // Disegna pattern a griglia uniforme (come CSS background-repeat)
-      for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < cols; col++) {
-          try {
-            const bX = x + (col * BOTTLE_W);
-            const bY = y + (row * BOTTLE_H);
-            doc.image(texturePath, bX, bY, { width: BOTTLE_W });
-          } catch (e) { /* Ignora errori immagine */ }
-        }
-      }
-      doc.restore();
-    };
-
-    // Funzione: Disegna pagina Retro
+    // Funzione: Disegna pagina Retro (solo immagine template)
     const drawBackPage = (cardCount: number) => {
       doc.addPage({ size: 'A4', margin: 0 });
 
@@ -864,23 +784,18 @@ app.get('/api/admin/tokens/pdf/:promotionId', authenticateToken, authorizeRole('
         const x = START_X + (col * CARD_W);
         const y = START_Y + (row * CARD_H);
 
-        // 1. Sfondo Rosso Campari
-        doc.rect(x, y, CARD_W, CARD_H).fill(CAMPARI_RED);
-
-        // 2. Pattern tono su tono (opacity 0.3) - usa bottiglia rossa per retro
-        drawPattern(x, y, CARD_W, CARD_H, 0.3, TEXTURE_PATH);
-
-        // 3. Logo Bianco Centrato
-        const logoW = 100;
+        // Immagine retro scalata a 50x80mm
         try {
-          doc.image(LOGO_PATH, x + (CARD_W - logoW) / 2, y + (CARD_H - logoW) / 2, { width: logoW });
+          doc.image(BACK_TEMPLATE, x, y, { width: CARD_W, height: CARD_H });
         } catch (e) {
-          doc.fillColor('white').font('Helvetica-Bold').fontSize(16);
-          doc.text('CAMPARI SODA', x, y + CARD_H / 2 - 10, { width: CARD_W, align: 'center' });
+          doc.rect(x, y, CARD_W, CARD_H).fill('#D31418');
         }
 
-        // 4. Bordo guida taglio
-        doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.5).stroke('white');
+        // Linea di taglio tratteggiata
+        doc.save();
+        doc.dash(5, { space: 3 });
+        doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.5).stroke('#999999');
+        doc.restore();
       }
     };
 
@@ -898,56 +813,45 @@ app.get('/api/admin/tokens/pdf/:promotionId', authenticateToken, authorizeRole('
         const x = START_X + (col * CARD_W);
         const y = START_Y + (row * CARD_H);
 
-        // 1. Sfondo Bianco
-        doc.rect(x, y, CARD_W, CARD_H).fill('white');
-
-        // 2. Pattern filigrana leggera (opacity 0.06) - usa bottiglia bianca per effetto grayscale
-        drawPattern(x, y, CARD_W, CARD_H, 0.06, TEXTURE_PATH_FRONT);
-
-        // 3. Bordo guida taglio
-        doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.2).stroke('#ddd');
-
-        // 4. Header: SCANSIONA E VINCI
-        doc.fillColor(CAMPARI_RED);
+        // 1. Immagine fronte come sfondo (scalata a 50x80mm)
         try {
-          doc.font(FONT_TITLE).fontSize(20);
+          doc.image(FRONT_TEMPLATE, x, y, { width: CARD_W, height: CARD_H });
         } catch (e) {
-          doc.font('Helvetica-Bold').fontSize(20);
+          doc.rect(x, y, CARD_W, CARD_H).fill('white');
         }
-        const textY = y + 18;
-        doc.text('SCANSIONA', x, textY, { width: CARD_W, align: 'center', lineGap: -4 });
-        doc.text('E VINCI', x, textY + 20, { width: CARD_W, align: 'center' });
 
-        // 5. QR Code con padding bianco
+        // 2. QR Code centrato verticalmente (nella zona centrale del template)
         const playUrl = `${APP_URL}/play?token=${token.token_code}`;
         const qrData = await QRCode.toDataURL(playUrl, { margin: 1, width: 200 });
-        const qrSize = 85;
+        const qrSize = 75 * MM_TO_PT / 2.83465; // ~75pt per QR leggibile
         const qrX = x + (CARD_W - qrSize) / 2;
-        const qrY = textY + 50;
+        const qrY = y + (CARD_H * 0.35); // Posizionato al 35% dall'alto
 
-        // Background bianco per QR
-        doc.rect(qrX - 4, qrY - 4, qrSize + 8, qrSize + 8).fill('white');
+        // Background bianco semi-trasparente per QR + codice
+        const boxPadding = 8;
+        const boxHeight = qrSize + 30; // Spazio per QR + codice
+        doc.save();
+        doc.opacity(0.9);
+        doc.roundedRect(qrX - boxPadding, qrY - boxPadding, qrSize + boxPadding * 2, boxHeight + boxPadding, 5).fill('white');
+        doc.restore();
+
+        // QR Code
         doc.image(qrData, qrX, qrY, { width: qrSize });
 
-        // 6. Token Code
+        // 3. Token Code sotto il QR
         doc.fillColor('black');
         try {
-          doc.font(FONT_CODE).fontSize(11);
+          doc.font(FONT_CODE).fontSize(10);
         } catch (e) {
-          doc.font('Courier').fontSize(11);
+          doc.font('Courier').fontSize(10);
         }
-        // Background bianco per codice
         const codeY = qrY + qrSize + 8;
-        doc.rect(x + 20, codeY - 2, CARD_W - 40, 16).fill('white');
-        doc.fillColor('black');
         doc.text(token.token_code, x, codeY, { width: CARD_W, align: 'center', characterSpacing: 1 });
 
-        // 7. Triangolo decorativo angolo in basso a destra
+        // 4. Linea di taglio tratteggiata
         doc.save();
-        doc.moveTo(x + CARD_W - 25, y + CARD_H)
-          .lineTo(x + CARD_W, y + CARD_H)
-          .lineTo(x + CARD_W, y + CARD_H - 25)
-          .fill(CAMPARI_RED);
+        doc.dash(5, { space: 3 });
+        doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.5).stroke('#999999');
         doc.restore();
       }
 
