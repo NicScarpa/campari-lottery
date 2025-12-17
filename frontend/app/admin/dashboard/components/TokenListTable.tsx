@@ -123,7 +123,11 @@ export default function TokenListTable({ promotionId, limit }: { promotionId: st
                             <div>
                                 <div className="font-mono font-bold text-gray-700">{token.token_code}</div>
                                 <div className="text-xs text-gray-400">
-                                    {token.usedAt ? new Date(token.usedAt).toLocaleDateString() + ' ' + new Date(token.usedAt).toLocaleTimeString() : 'Mai utilizzato'}
+                                    {token.status === 'AVAILABLE'
+                                        ? 'Disponibile'
+                                        : token.usedAt
+                                            ? `Usato il ${new Date(token.usedAt).toLocaleDateString()} alle ${new Date(token.usedAt).toLocaleTimeString()}`
+                                            : 'Usato (data n/d)'}
                                 </div>
                             </div>
                         </div>
