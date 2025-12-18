@@ -22,7 +22,7 @@ export default function Sidebar({ currentView, onChangeView, onLogout }: Sidebar
     return (
         <>
             {/* Mobile Header / Toggle */}
-            <div className="md:hidden flex justify-between items-center bg-[#1a1a1a] p-4 text-white sticky top-0 z-50 shadow-md">
+            <div className="md:hidden flex justify-between items-center bg-[#1a1a1a] px-4 py-3 text-white fixed top-0 left-0 right-0 z-50 shadow-md h-14">
                 <span className="font-bold text-lg">Admin Panel</span>
                 <button onClick={() => setIsMobileOpen(!isMobileOpen)} className="p-2">
                     {isMobileOpen ? (

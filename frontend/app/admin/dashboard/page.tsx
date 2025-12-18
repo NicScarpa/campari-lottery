@@ -267,9 +267,9 @@ export default function AdminDashboardPage() {
             />
 
             {/* Main Content */}
-            <main className="flex-1 flex flex-col h-screen overflow-hidden relative z-0 pt-16 md:pt-0">
+            <main className="flex-1 flex flex-col h-screen overflow-hidden relative z-0 pt-14 md:pt-0">
                 {/* Mobile Header - Shows promotion selector on mobile */}
-                <div className="md:hidden bg-white/95 backdrop-blur-md sticky top-16 z-20 px-4 py-3 border-b border-gray-100">
+                <div className="md:hidden bg-white/95 backdrop-blur-md sticky top-0 z-20 px-4 py-3 border-b border-gray-100">
                     <div className="flex items-center justify-between">
                         <h2 className="text-lg font-bold text-gray-800 capitalize">{currentView}</h2>
                         <select
