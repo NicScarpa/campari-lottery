@@ -464,6 +464,68 @@ app.get('/api/admin/tokens/:promotionId', authMiddleware_1.authenticateToken, (0
         res.status(500).json({ error: 'Errore tokens' });
     }
 });
+// Token Utilizzati con dettagli giocata (per sezione "Ultimi Token Utilizzati")
+app.get('/api/admin/used-tokens/:promotionId', authMiddleware_1.authenticateToken, (0, authMiddleware_1.authorizeRole)('admin'), async (req, res) => {
+    const { promotionId } = req.params;
+    const { limit = 10 } = req.query;
+    const pid = Number(promotionId);
+    try {
+        // Recupera i token utilizzati con tutte le info correlate
+        const usedTokens = await prisma.token.findMany({
+            where: {
+                promotion_id: pid,
+                status: 'used'
+            },
+            include: {
+                play: {
+                    include: {
+                        customer: {
+                            select: {
+                                first_name: true,
+                                last_name: true,
+                                phone_number: true
+                            }
+                        },
+                        prize_assignment: {
+                            include: {
+                                prize_type: {
+                                    select: {
+                                        name: true
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            orderBy: { used_at: 'desc' },
+            take: Number(limit)
+        });
+        // Formatta la risposta per il frontend
+        const formatted = usedTokens.map(token => ({
+            id: token.id,
+            token_code: token.token_code,
+            used_at: token.used_at,
+            is_winner: token.play?.is_winner || false,
+            customer: token.play?.customer ? {
+                first_name: token.play.customer.first_name,
+                last_name: token.play.customer.last_name,
+                phone_number: token.play.customer.phone_number
+            } : null,
+            prize_name: token.play?.prize_assignment?.prize_type?.name || null,
+            prize_code: token.play?.prize_assignment?.prize_code || null,
+            redeemed_at: token.play?.prize_assignment?.redeemed_at || null
+        }));
+        res.json({
+            tokens: formatted,
+            total: formatted.length
+        });
+    }
+    catch (err) {
+        console.error('Errore fetch used tokens:', err);
+        res.status(500).json({ error: 'Errore recupero token utilizzati' });
+    }
+});
 // Reset Token - Elimina tutti i token e le giocate di una promozione
 app.delete('/api/admin/tokens/reset/:promotionId', authMiddleware_1.authenticateToken, (0, authMiddleware_1.authorizeRole)('admin'), async (req, res) => {
     const { promotionId } = req.params;
@@ -517,11 +579,11 @@ app.delete('/api/admin/tokens/reset/:promotionId', authMiddleware_1.authenticate
         res.status(500).json({ error: 'Errore durante il reset dei token' });
     }
 });
-// Generazione PDF Token (Nuovo Layout 8x5 Fronte/Retro)
+// Generazione PDF Token (Layout Verticale 50x80mm con Pattern)
 app.post('/api/admin/generate-tokens', authMiddleware_1.authenticateToken, (0, authMiddleware_1.authorizeRole)('admin'), async (req, res) => {
     const { promotionId, count, prefix } = req.body;
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const path = require('path'); // Ensure path is available
+    const path = require('path');
     try {
         const codesToCreate = [];
         for (let i = 0; i < count; i++) {
@@ -542,84 +604,54 @@ app.post('/api/admin/generate-tokens', authMiddleware_1.authenticateToken, (0, a
         });
         const doc = new pdfkit_1.default({ size: 'A4', autoFirstPage: false, margin: 0 });
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', 'attachment; filename=tokens_print_8x5.pdf');
+        res.setHeader('Content-Disposition', 'attachment; filename=tokens_print_50x80.pdf');
         doc.pipe(res);
         // --- CONFIGURAZIONE GRIGLIA VERTICALE (50mm x 80mm) ---
         const MM_TO_PT = 2.83465;
-        const CARD_W = 50 * MM_TO_PT; // ~141.73
-        const CARD_H = 80 * MM_TO_PT; // ~226.77
-        // A4 = 595.28 x 841.89 (210mm x 297mm)
+        const CARD_W = 50 * MM_TO_PT; // ~141.73pt
+        const CARD_H = 80 * MM_TO_PT; // ~226.77pt
+        // A4 = 595.28 x 841.89pt (210mm x 297mm)
         // 4 Colonne (200mm), 3 Righe (240mm) = 12 card per pagina
         const COLUMNS = 4;
         const ROWS = 3;
         const CARDS_PER_PAGE = COLUMNS * ROWS;
         const PAGE_W = 595.28;
         const PAGE_H = 841.89;
-        const CONTENT_W = (CARD_W * COLUMNS);
-        const CONTENT_H = (CARD_H * ROWS);
+        const CONTENT_W = CARD_W * COLUMNS;
+        const CONTENT_H = CARD_H * ROWS;
         const START_X = (PAGE_W - CONTENT_W) / 2;
         const START_Y = (PAGE_H - CONTENT_H) / 2;
-        const LOGO_PATH = path.join(__dirname, '../../frontend/public/logocamparisoda_bianco.png');
-        const TEXTURE_PATH = path.join(__dirname, '../../frontend/public/bottiglia.png');
-        const FONT_TITLE = path.join(__dirname, '../fonts/Oswald-Bold.ttf');
-        const FONT_CODE = path.join(__dirname, '../fonts/Roboto-Medium.ttf'); // Usiamo Roboto come richiesto (Medium o Regular)
-        // Helper: Disegna Texture Pattern
-        const drawPattern = (doc, x, y, w, h, opacity, brightness = 1) => {
-            doc.save();
-            doc.rect(x, y, w, h).clip();
-            doc.opacity(opacity);
-            const patCols = 4; // Più densa
-            const patRows = 5;
-            const patW = w / patCols;
-            const patH = h / patRows;
-            for (let pr = 0; pr < patRows; pr++) {
-                for (let pc = 0; pc < patCols; pc++) {
-                    const offsetX = (pr % 2 === 0) ? 0 : (patW / 2);
-                    try {
-                        const bW = patW * 0.7;
-                        const bX = x + (pc * patW) + offsetX + (patW - bW) / 2;
-                        const bY = y + (pr * patH) + (patH - bW) / 2;
-                        // Ruotiamo leggermente ogni bottiglia come da specifiche CSS (-5deg)
-                        doc.save();
-                        doc.translate(bX + bW / 2, bY + bW * (716 / 238) / 2); // Centro rotazione approx
-                        doc.rotate(-15);
-                        doc.translate(-(bX + bW / 2), -(bY + bW * (716 / 238) / 2));
-                        doc.image(TEXTURE_PATH, bX, bY, { width: bW });
-                        doc.restore();
-                    }
-                    catch (e) { }
-                }
-            }
-            doc.restore();
-        };
-        // Funzione: Disegna Retro
-        const drawBackPage = () => {
+        // Paths risorse - Template predesegnati (in backend/assets per deploy)
+        const FRONT_TEMPLATE = path.join(__dirname, '../assets/fronte-token.png');
+        const BACK_TEMPLATE = path.join(__dirname, '../assets/retro-token.png');
+        const FONT_CODE = path.join(__dirname, '../fonts/Roboto-Medium.ttf');
+        // Funzione: Disegna pagina Retro (colonne specchiate per stampa fronte/retro)
+        const drawBackPage = (cardCount) => {
             doc.addPage({ size: 'A4', margin: 0 });
-            for (let row = 0; row < ROWS; row++) {
-                for (let col = 0; col < COLUMNS; col++) {
-                    const x = START_X + (col * CARD_W);
-                    const y = START_Y + (row * CARD_H);
-                    // 1. Sfondo Rosso
-                    doc.rect(x, y, CARD_W, CARD_H).fill('#D31418'); // Campari Red Updated
-                    // 2. Texture (Tono su tono scuro/chiaro)
-                    drawPattern(doc, x, y, CARD_W, CARD_H, 0.15); // Opacity 0.15
-                    // 3. Logo Bianco Centrale
-                    const logoW = 100; // 35mm approx
-                    try {
-                        doc.image(LOGO_PATH, x + (CARD_W - logoW) / 2, y + (CARD_H - logoW) / 2, { width: logoW });
-                    }
-                    catch (e) {
-                        doc.fillColor('white').text('CAMPARI', x, y + 30);
-                    }
-                    // Guide Taglio
-                    doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.5).stroke('white');
+            for (let j = 0; j < cardCount; j++) {
+                const row = Math.floor(j / COLUMNS);
+                const col = j % COLUMNS;
+                // Specchia la colonna per allineamento corretto in stampa fronte/retro
+                const mirroredCol = (COLUMNS - 1) - col;
+                const x = START_X + (mirroredCol * CARD_W);
+                const y = START_Y + (row * CARD_H);
+                // Immagine retro scalata a 50x80mm
+                try {
+                    doc.image(BACK_TEMPLATE, x, y, { width: CARD_W, height: CARD_H });
                 }
+                catch (e) {
+                    doc.rect(x, y, CARD_W, CARD_H).fill('#D31418');
+                }
+                // Linea di taglio tratteggiata
+                doc.save();
+                doc.dash(5, { space: 3 });
+                doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.5).stroke('#999999');
+                doc.restore();
             }
         };
-        // Main Loop
-        const chunkSize = CARDS_PER_PAGE;
-        for (let i = 0; i < tokens.length; i += chunkSize) {
-            const chunk = tokens.slice(i, i + chunkSize);
+        // Main Loop - Genera pagine
+        for (let i = 0; i < tokens.length; i += CARDS_PER_PAGE) {
+            const chunk = tokens.slice(i, i + CARDS_PER_PAGE);
             // --- PAGINA FRONTE ---
             doc.addPage({ size: 'A4', margin: 0 });
             for (let j = 0; j < chunk.length; j++) {
@@ -628,48 +660,46 @@ app.post('/api/admin/generate-tokens', authMiddleware_1.authenticateToken, (0, a
                 const col = j % COLUMNS;
                 const x = START_X + (col * CARD_W);
                 const y = START_Y + (row * CARD_H);
-                // Sfondo Bianco
-                doc.rect(x, y, CARD_W, CARD_H).fill('white');
-                // Texture light
-                drawPattern(doc, x, y, CARD_W, CARD_H, 0.06);
-                // Guide
-                doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.2).stroke('#ddd');
-                // Header: SCANSIONA E VINCI (Oswald Bold)
-                doc.fillColor('#D31418');
+                // 1. Immagine fronte come sfondo (scalata a 50x80mm)
                 try {
-                    doc.font(FONT_TITLE).fontSize(20);
+                    doc.image(FRONT_TEMPLATE, x, y, { width: CARD_W, height: CARD_H });
                 }
                 catch (e) {
-                    doc.font('Helvetica-Bold').fontSize(20);
+                    doc.rect(x, y, CARD_W, CARD_H).fill('white');
                 }
-                // Centrato in alto
-                const textY = y + 20;
-                doc.text('SCANSIONA', x, textY, { width: CARD_W, align: 'center', lineGap: -5 });
-                doc.text('E VINCI', x, textY + 22, { width: CARD_W, align: 'center' });
-                // QR Code
+                // 2. QR Code centrato verticalmente (nella zona centrale del template)
                 const playUrl = `${APP_URL}/play?token=${token.token_code}`;
-                const qrData = await qrcode_1.default.toDataURL(playUrl, { margin: 0 });
-                const qrSize = 85; // 30mm approx
-                doc.image(qrData, x + (CARD_W - qrSize) / 2, textY + 55, { width: qrSize });
-                // Token Code (Roboto)
+                const qrData = await qrcode_1.default.toDataURL(playUrl, { margin: 1, width: 200 });
+                const qrSize = 75 * MM_TO_PT / 2.83465; // ~75pt per QR leggibile
+                const qrX = x + (CARD_W - qrSize) / 2;
+                const qrY = y + (CARD_H * 0.35); // Posizionato al 35% dall'alto
+                // Background bianco semi-trasparente per QR + codice
+                const boxPadding = 8;
+                const boxHeight = qrSize + 30; // Spazio per QR + codice
+                doc.save();
+                doc.opacity(0.9);
+                doc.roundedRect(qrX - boxPadding, qrY - boxPadding, qrSize + boxPadding * 2, boxHeight + boxPadding, 5).fill('white');
+                doc.restore();
+                // QR Code
+                doc.image(qrData, qrX, qrY, { width: qrSize });
+                // 3. Token Code sotto il QR
                 doc.fillColor('black');
                 try {
-                    doc.font(FONT_CODE).fontSize(11);
+                    doc.font(FONT_CODE).fontSize(10);
                 }
                 catch (e) {
-                    doc.font('Courier').fontSize(11);
+                    doc.font('Courier').fontSize(10);
                 }
-                doc.text(`${token.token_code}`, x, textY + 55 + qrSize + 10, { width: CARD_W, align: 'center', characterSpacing: 1 });
-                // Angolo Decorativo
+                const codeY = qrY + qrSize + 8;
+                doc.text(token.token_code, x, codeY, { width: CARD_W, align: 'center', characterSpacing: 1 });
+                // 4. Linea di taglio tratteggiata
                 doc.save();
-                doc.moveTo(x + CARD_W - 30, y + CARD_H)
-                    .lineTo(x + CARD_W, y + CARD_H)
-                    .lineTo(x + CARD_W, y + CARD_H - 30)
-                    .fill('#D31418');
+                doc.dash(5, { space: 3 });
+                doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.5).stroke('#999999');
                 doc.restore();
             }
             // --- PAGINA RETRO ---
-            drawBackPage();
+            drawBackPage(chunk.length);
         }
         doc.end();
     }
@@ -678,7 +708,7 @@ app.post('/api/admin/generate-tokens', authMiddleware_1.authenticateToken, (0, a
         res.status(500).json({ error: 'Generation failed' });
     }
 });
-// Download PDF dei Token Esistenti
+// Download PDF dei Token Esistenti (Layout Verticale 50x80mm con Pattern)
 app.get('/api/admin/tokens/pdf/:promotionId', authMiddleware_1.authenticateToken, (0, authMiddleware_1.authorizeRole)('admin'), async (req, res) => {
     const { promotionId } = req.params;
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -688,7 +718,7 @@ app.get('/api/admin/tokens/pdf/:promotionId', authMiddleware_1.authenticateToken
         const tokens = await prisma.token.findMany({
             where: {
                 promotion_id: Number(promotionId),
-                status: 'available' // Solo token non ancora usati
+                status: 'available'
             },
             orderBy: { created_at: 'asc' }
         });
@@ -699,68 +729,100 @@ app.get('/api/admin/tokens/pdf/:promotionId', authMiddleware_1.authenticateToken
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=tokens_promo_${promotionId}.pdf`);
         doc.pipe(res);
-        // --- CONFIGURAZIONE GRIGLIA (80mm x 50mm) ---
+        // --- CONFIGURAZIONE GRIGLIA VERTICALE (50mm x 80mm) ---
         const MM_TO_PT = 2.83465;
-        const CARD_W = 80 * MM_TO_PT;
-        const CARD_H = 50 * MM_TO_PT;
+        const CARD_W = 50 * MM_TO_PT; // ~141.73pt
+        const CARD_H = 80 * MM_TO_PT; // ~226.77pt
+        // A4 = 595.28 x 841.89pt (210mm x 297mm)
+        // 4 Colonne (200mm), 3 Righe (240mm) = 12 card per pagina
+        const COLUMNS = 4;
+        const ROWS = 3;
+        const CARDS_PER_PAGE = COLUMNS * ROWS;
         const PAGE_W = 595.28;
         const PAGE_H = 841.89;
-        const CONTENT_W = (CARD_W * 2);
-        const CONTENT_H = (CARD_H * 5);
+        const CONTENT_W = CARD_W * COLUMNS;
+        const CONTENT_H = CARD_H * ROWS;
         const START_X = (PAGE_W - CONTENT_W) / 2;
         const START_Y = (PAGE_H - CONTENT_H) / 2;
-        const LOGO_PATH = path.join(__dirname, '../../frontend/public/camparisoda.png');
-        // Funzione: Disegna Retro
-        const drawBackPage = () => {
+        // Paths risorse - Template predesegnati (in backend/assets per deploy)
+        const FRONT_TEMPLATE = path.join(__dirname, '../assets/fronte-token.png');
+        const BACK_TEMPLATE = path.join(__dirname, '../assets/retro-token.png');
+        const FONT_CODE = path.join(__dirname, '../fonts/Roboto-Medium.ttf');
+        // Funzione: Disegna pagina Retro (colonne specchiate per stampa fronte/retro)
+        const drawBackPage = (cardCount) => {
             doc.addPage({ size: 'A4', margin: 0 });
-            for (let row = 0; row < 5; row++) {
-                for (let col = 0; col < 2; col++) {
-                    const x = START_X + (col * CARD_W);
-                    const y = START_Y + (row * CARD_H);
-                    doc.rect(x, y, CARD_W, CARD_H).fill('#E3001B');
-                    doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.5).stroke('white');
-                    const logoW = 80;
-                    try {
-                        doc.image(LOGO_PATH, x + (CARD_W - logoW) / 2, y + (CARD_H - logoW) / 2 - 10, { width: logoW });
-                    }
-                    catch (e) {
-                        doc.fillColor('white').fontSize(14).text('CAMPARI', x, y + CARD_H / 2 - 10, { width: CARD_W, align: 'center' });
-                        doc.text('SODA', x, y + CARD_H / 2 + 5, { width: CARD_W, align: 'center' });
-                    }
+            for (let j = 0; j < cardCount; j++) {
+                const row = Math.floor(j / COLUMNS);
+                const col = j % COLUMNS;
+                // Specchia la colonna per allineamento corretto in stampa fronte/retro
+                const mirroredCol = (COLUMNS - 1) - col;
+                const x = START_X + (mirroredCol * CARD_W);
+                const y = START_Y + (row * CARD_H);
+                // Immagine retro scalata a 50x80mm
+                try {
+                    doc.image(BACK_TEMPLATE, x, y, { width: CARD_W, height: CARD_H });
                 }
+                catch (e) {
+                    doc.rect(x, y, CARD_W, CARD_H).fill('#D31418');
+                }
+                // Linea di taglio tratteggiata
+                doc.save();
+                doc.dash(5, { space: 3 });
+                doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.5).stroke('#999999');
+                doc.restore();
             }
         };
-        // Genera pagine
-        const chunkSize = 10;
-        for (let i = 0; i < tokens.length; i += chunkSize) {
-            const chunk = tokens.slice(i, i + chunkSize);
-            // PAGINA FRONTE
+        // Main Loop - Genera pagine
+        for (let i = 0; i < tokens.length; i += CARDS_PER_PAGE) {
+            const chunk = tokens.slice(i, i + CARDS_PER_PAGE);
+            // --- PAGINA FRONTE ---
             doc.addPage({ size: 'A4', margin: 0 });
             for (let j = 0; j < chunk.length; j++) {
                 const token = chunk[j];
-                const row = Math.floor(j / 2);
-                const col = j % 2;
+                const row = Math.floor(j / COLUMNS);
+                const col = j % COLUMNS;
                 const x = START_X + (col * CARD_W);
                 const y = START_Y + (row * CARD_H);
-                doc.rect(x, y, CARD_W, CARD_H).fill('white');
-                doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.2).stroke('#ccc');
-                doc.font('Helvetica-Bold').fontSize(14).fillColor('#E3001B');
-                doc.text('SCANSIONA E VINCI', x, y + 25, { width: CARD_W, align: 'center' });
+                // 1. Immagine fronte come sfondo (scalata a 50x80mm)
+                try {
+                    doc.image(FRONT_TEMPLATE, x, y, { width: CARD_W, height: CARD_H });
+                }
+                catch (e) {
+                    doc.rect(x, y, CARD_W, CARD_H).fill('white');
+                }
+                // 2. QR Code centrato verticalmente (nella zona centrale del template)
                 const playUrl = `${APP_URL}/play?token=${token.token_code}`;
-                const qrData = await qrcode_1.default.toDataURL(playUrl, { margin: 0 });
-                const qrSize = 75;
-                doc.image(qrData, x + (CARD_W - qrSize) / 2, y + 45, { width: qrSize });
-                doc.font('Courier-Bold').fontSize(12).fillColor('black');
-                doc.text(`${token.token_code}`, x, y + 125, { width: CARD_W, align: 'center', characterSpacing: 2 });
+                const qrData = await qrcode_1.default.toDataURL(playUrl, { margin: 1, width: 200 });
+                const qrSize = 75 * MM_TO_PT / 2.83465; // ~75pt per QR leggibile
+                const qrX = x + (CARD_W - qrSize) / 2;
+                const qrY = y + (CARD_H * 0.35); // Posizionato al 35% dall'alto
+                // Background bianco semi-trasparente per QR + codice
+                const boxPadding = 8;
+                const boxHeight = qrSize + 30; // Spazio per QR + codice
                 doc.save();
-                doc.moveTo(x + CARD_W - 30, y + CARD_H)
-                    .lineTo(x + CARD_W, y + CARD_H)
-                    .lineTo(x + CARD_W, y + CARD_H - 30)
-                    .fill('#E3001B');
+                doc.opacity(0.9);
+                doc.roundedRect(qrX - boxPadding, qrY - boxPadding, qrSize + boxPadding * 2, boxHeight + boxPadding, 5).fill('white');
+                doc.restore();
+                // QR Code
+                doc.image(qrData, qrX, qrY, { width: qrSize });
+                // 3. Token Code sotto il QR
+                doc.fillColor('black');
+                try {
+                    doc.font(FONT_CODE).fontSize(10);
+                }
+                catch (e) {
+                    doc.font('Courier').fontSize(10);
+                }
+                const codeY = qrY + qrSize + 8;
+                doc.text(token.token_code, x, codeY, { width: CARD_W, align: 'center', characterSpacing: 1 });
+                // 4. Linea di taglio tratteggiata
+                doc.save();
+                doc.dash(5, { space: 3 });
+                doc.rect(x, y, CARD_W, CARD_H).lineWidth(0.5).stroke('#999999');
                 doc.restore();
             }
-            // PAGINA RETRO
-            drawBackPage();
+            // --- PAGINA RETRO ---
+            drawBackPage(chunk.length);
         }
         doc.end();
     }
@@ -1024,6 +1086,27 @@ app.post('/api/customer/play', authMiddleware_1.authenticateCustomer, async (req
         if (err.message === 'TOKEN_MISMATCH')
             return res.status(400).json({ error: 'Token does not belong to this promotion' });
         res.status(500).json({ error: 'Transaction failed' });
+    }
+});
+// Public Promotion Info (per pagina classifica pubblica)
+app.get('/api/promotions/public/:promotionId', async (req, res) => {
+    const { promotionId } = req.params;
+    try {
+        const promotion = await prisma.promotion.findUnique({
+            where: { id: Number(promotionId) },
+            select: {
+                name: true,
+                status: true
+            }
+        });
+        if (!promotion) {
+            return res.status(404).json({ error: 'Promozione non trovata' });
+        }
+        res.json(promotion);
+    }
+    catch (err) {
+        console.error('Errore fetch promotion public:', err);
+        res.status(500).json({ error: 'Errore server' });
     }
 });
 // Leaderboard
