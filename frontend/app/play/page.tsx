@@ -8,6 +8,13 @@ import LegalModal from '../components/LegalModal';
 import LiveLeaderboard from './components/LiveLeaderboard';
 import { LEGAL_TEXTS } from '../lib/legalData';
 import { getApiUrl } from '../lib/api';
+import {
+    trackViewContent,
+    trackRegistration,
+    trackInitiatePlay,
+    trackGameResult,
+    trackError
+} from '../lib/tracking';
 
 // --- COSTANTI DI STILE CAMPARI ---
 const CAMPARI_RED = '#E3001B';
@@ -127,6 +134,13 @@ function PlayContent() {
                     localStorage.setItem('customer_token', data.token);
                 }
 
+                // TRACKING: Registrazione completata
+                trackRegistration({
+                    isNewUser: !existingUser,
+                    promotionId: promoId,
+                    acceptedMarketing: marketing
+                });
+
                 setGameState('READY');
                 if (saveLocal) {
                     localStorage.setItem('campari_user', JSON.stringify({ firstName: fName, lastName: lName, phone: ph }));
@@ -163,6 +177,9 @@ function PlayContent() {
 
                 setPromotionId(data.promotionId);
 
+                // TRACKING: ViewContent quando l'utente vede la pagina di gioco
+                trackViewContent(data.promotionId);
+
                 // NUOVO FLUSSO: Sempre partire da PHONE_INPUT
                 // Se c'è un utente salvato, pre-compiliamo solo il telefono
                 const savedUser = localStorage.getItem('campari_user');
@@ -198,6 +215,12 @@ function PlayContent() {
     };
 
     const handlePlay = async () => {
+        // TRACKING: Utente clicca "GIOCA ORA"
+        trackInitiatePlay({
+            promotionId,
+            customerId
+        });
+
         setGameState('PLAYING');
         // Piccolo delay per suspence
         await new Promise(r => setTimeout(r, 1500));
@@ -238,15 +261,36 @@ function PlayContent() {
                 if (data.isWinner) {
                     setPrize(data.prizeAssignment);
                     confetti({ particleCount: 200, spread: 90, origin: { y: 0.6 }, colors: ['#E3001B', '#FFFFFF'] });
+
+                    // TRACKING: Vincita premio
+                    trackGameResult({
+                        isWinner: true,
+                        prizeName: data.prizeAssignment?.prize_type?.name,
+                        prizeCode: data.prizeAssignment?.prize_code,
+                        promotionId,
+                        customerId
+                    });
                 } else {
                     setPrize(null);
+
+                    // TRACKING: Non ha vinto
+                    trackGameResult({
+                        isWinner: false,
+                        promotionId,
+                        customerId
+                    });
                 }
                 setGameState('RESULT');
             } else {
                 setGameState('ERROR');
                 setErrorMessage(data.error || 'Errore di gioco');
+                trackError('play_error', data.error);
             }
-        } catch (err) { setGameState('ERROR'); setErrorMessage("Errore di rete."); }
+        } catch (err) {
+            setGameState('ERROR');
+            setErrorMessage("Errore di rete.");
+            trackError('network_error', 'Errore di rete durante il gioco');
+        }
     };
 
     const openLegal = (type: 'privacy' | 'terms') => {
