@@ -3,6 +3,7 @@ import { Josefin_Sans } from "next/font/google";
 import "./globals.css";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { GoogleTagManagerHead, GoogleTagManagerBody } from "./components/GoogleTagManager";
+import { MetaPixelHead, MetaPixelBody } from "./components/MetaPixel";
 
 const josefin = Josefin_Sans({
   subsets: ["latin"],
@@ -24,6 +25,7 @@ export default function RootLayout({
     <html lang="it">
       <head>
         <GoogleTagManagerHead />
+        <MetaPixelHead />
       </head>
       {/* suppressHydrationWarning è necessario perché alcune estensioni browser
         (come ColorZilla o Password Manager) iniettano attributi nel body,
@@ -34,6 +36,7 @@ export default function RootLayout({
         suppressHydrationWarning={true}
       >
         <GoogleTagManagerBody />
+        <MetaPixelBody />
         <ErrorBoundary>
           {children}
         </ErrorBoundary>
