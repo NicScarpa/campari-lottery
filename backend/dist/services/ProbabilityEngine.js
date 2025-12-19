@@ -8,18 +8,21 @@ class ProbabilityEngine {
      */
     determineOutcome(input) {
         const { totalTokens, usedTokens, prizeTypes } = input;
-        // 1. Calcola quanti token sono rimasti nel "sacchetto" virtuale
-        // Usiamo Math.max(1, ...) per evitare divisioni per zero alla fine
-        const tokensRemaining = Math.max(1, totalTokens - usedTokens);
-        // 2. Filtra solo i premi che hanno ancora stock > 0
+        // 1. Se tutti i token sono stati usati, nessuna vincita possibile
+        if (totalTokens <= usedTokens) {
+            return null;
+        }
+        // 2. Calcola quanti token sono rimasti nel "sacchetto" virtuale
+        const tokensRemaining = totalTokens - usedTokens;
+        // 3. Filtra solo i premi che hanno ancora stock > 0
         const availablePrizes = prizeTypes.filter(p => p.remainingStock > 0);
         // Se non ci sono premi disponibili, l'utente perde automaticamente
         if (availablePrizes.length === 0)
             return null;
-        // 3. Genera un numero casuale tra 0.0 e 1.0
+        // 4. Genera un numero casuale tra 0.0 e 1.0
         const randomValue = Math.random();
         let cumulativeProbability = 0;
-        // 4. Cicla sui premi disponibili e accumula la probabilità
+        // 5. Cicla sui premi disponibili e accumula la probabilità
         for (const prize of availablePrizes) {
             // La probabilità di estrarre QUESTO specifico premio ora
             const prizeProbability = prize.remainingStock / tokensRemaining;

@@ -5,6 +5,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
+const crypto_1 = __importDefault(require("crypto"));
+const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const client_1 = require("@prisma/client");
 const ProbabilityEngine_1 = require("./services/ProbabilityEngine");
 const bcrypt_1 = __importDefault(require("bcrypt"));
@@ -63,19 +65,94 @@ const isValidPrizeTypesArray = (prizeTypes) => {
         typeof p.initial_stock === 'number' &&
         p.initial_stock >= 0);
 };
-// Configurazione CORS
-app.use((0, cors_1.default)({
-    origin: [
+// Configurazione CORS - origins configurabili via env
+const CORS_ORIGINS = process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim())
+    : [
         APP_URL,
         'http://localhost:3000',
-        'https://new-frontend-camparino-week.up.railway.app', // Railway frontend domain
-        'https://campari-lottery-git-main-nicola-scarpas-projects.vercel.app', // Vercel branch domain
-        'https://campari-lottery.vercel.app' // Vercel production domain
-    ],
+        'https://new-frontend-camparino-week.up.railway.app',
+        'https://campari-lottery-git-main-nicola-scarpas-projects.vercel.app',
+        'https://campari-lottery.vercel.app',
+        'https://www.camparinoweek.com',
+        'https://camparinoweek.com'
+    ];
+app.use((0, cors_1.default)({
+    origin: CORS_ORIGINS,
     credentials: true
 }));
 app.use(express_1.default.json());
 app.use((0, cookie_parser_1.default)());
+// --- RATE LIMITING ---
+// Strategia: limiti alti per IP (tutti i clienti del locale condividono WiFi),
+// limiti stretti per singolo customer (prevenzione abusi individuali)
+const isDev = process.env.NODE_ENV !== 'production';
+// 1. Limiter generale (solo protezione DDoS) - molto permissivo
+const generalLimiter = (0, express_rate_limit_1.default)({
+    windowMs: 15 * 60 * 1000, // 15 minuti
+    max: 5000, // 5000 richieste per IP - protegge solo da attacchi
+    message: {
+        error: 'Servizio temporaneamente non disponibile. Riprova tra qualche minuto.',
+        code: 'RATE_LIMIT_GENERAL'
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: () => isDev && process.env.SKIP_RATE_LIMIT === 'true',
+});
+// 2. Limiter login admin (prevenzione brute force)
+const authLimiter = (0, express_rate_limit_1.default)({
+    windowMs: 15 * 60 * 1000, // 15 minuti
+    max: 15, // 15 tentativi - ragionevole per admin
+    message: {
+        error: 'Troppi tentativi di accesso. Riprova tra 15 minuti.',
+        code: 'RATE_LIMIT_AUTH'
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+// 3. Limiter registrazioni (per IP, ma alto per locali affollati)
+const registrationLimiter = (0, express_rate_limit_1.default)({
+    windowMs: 15 * 60 * 1000, // 15 minuti
+    max: 200, // 200 registrazioni per IP (~13/min, sufficiente per locale affollato)
+    message: {
+        error: 'Troppe registrazioni dalla tua rete. Attendi qualche minuto.',
+        code: 'RATE_LIMIT_REGISTRATION'
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+// 4. Limiter giocate PER CUSTOMER (basato su JWT, non IP!)
+// Questo è il limite più importante: impedisce abusi individuali
+const playLimiter = (0, express_rate_limit_1.default)({
+    windowMs: 60 * 1000, // 1 minuto
+    max: 5, // 5 giocate al minuto per singolo customer
+    message: {
+        error: 'Hai giocato troppo velocemente! Attendi qualche secondo prima di riprovare.',
+        code: 'RATE_LIMIT_PLAY'
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    // Usa il customer ID dal JWT invece dell'IP
+    keyGenerator: (req) => {
+        // Prova a estrarre customer ID dal token JWT
+        const customerToken = req.cookies?.customerToken || req.headers.authorization?.replace('Bearer ', '');
+        if (customerToken) {
+            try {
+                const decoded = jsonwebtoken_1.default.verify(customerToken, JWT_SECRET);
+                if (decoded.customerId) {
+                    return `customer_${decoded.customerId}`;
+                }
+            }
+            catch {
+                // Token non valido, fallback su IP
+            }
+        }
+        // Fallback su IP se non c'è customer token
+        return req.ip || 'unknown';
+    },
+});
+// Applica rate limiting generale a tutte le API
+app.use('/api/', generalLimiter);
 // --- HEALTH CHECK ---
 app.get('/health', (req, res) => {
     res.status(200).send('OK');
@@ -83,7 +160,7 @@ app.get('/health', (req, res) => {
 // ==========================================
 // 1. AUTHENTICATION (Login / Logout / Me)
 // ==========================================
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
     const { username, password } = req.body;
     try {
         const user = await prisma.staffUser.findUnique({ where: { username } });
@@ -135,13 +212,26 @@ app.get('/api/promotions/list', authMiddleware_1.authenticateToken, (0, authMidd
 // Crea Promozione
 app.post('/api/promotions/create', authMiddleware_1.authenticateToken, (0, authMiddleware_1.authorizeRole)('admin'), async (req, res) => {
     const { name, plannedTokenCount, startDatetime, endDatetime } = req.body;
+    // Validazione input
+    if (!name || !plannedTokenCount || !startDatetime || !endDatetime) {
+        return res.status(400).json({ error: 'Tutti i campi sono obbligatori' });
+    }
+    const startDate = new Date(startDatetime);
+    const endDate = new Date(endDatetime);
+    // Validazione date
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        return res.status(400).json({ error: 'Formato date non valido' });
+    }
+    if (startDate >= endDate) {
+        return res.status(400).json({ error: 'La data di fine deve essere successiva alla data di inizio' });
+    }
     try {
         const promo = await prisma.promotion.create({
             data: {
                 name,
                 planned_token_count: Number(plannedTokenCount),
-                start_datetime: new Date(startDatetime),
-                end_datetime: new Date(endDatetime),
+                start_datetime: startDate,
+                end_datetime: endDate,
                 status: 'DRAFT'
             }
         });
@@ -156,6 +246,17 @@ app.post('/api/promotions/create', authMiddleware_1.authenticateToken, (0, authM
 app.put('/api/promotions/update/:id', authMiddleware_1.authenticateToken, (0, authMiddleware_1.authorizeRole)('admin'), async (req, res) => {
     const { id } = req.params;
     const { name, plannedTokenCount, status, start_datetime, end_datetime } = req.body;
+    // Validazione date se fornite
+    if (start_datetime && end_datetime) {
+        const startDate = new Date(start_datetime);
+        const endDate = new Date(end_datetime);
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+            return res.status(400).json({ error: 'Formato date non valido' });
+        }
+        if (startDate >= endDate) {
+            return res.status(400).json({ error: 'La data di fine deve essere successiva alla data di inizio' });
+        }
+    }
     try {
         const promo = await prisma.promotion.update({
             where: { id: Number(id) },
@@ -163,8 +264,8 @@ app.put('/api/promotions/update/:id', authMiddleware_1.authenticateToken, (0, au
                 name,
                 planned_token_count: Number(plannedTokenCount),
                 status,
-                start_datetime: new Date(start_datetime),
-                end_datetime: new Date(end_datetime)
+                start_datetime: start_datetime ? new Date(start_datetime) : undefined,
+                end_datetime: end_datetime ? new Date(end_datetime) : undefined
             }
         });
         res.json({ success: true, promotion: promo });
@@ -467,40 +568,47 @@ app.get('/api/admin/tokens/:promotionId', authMiddleware_1.authenticateToken, (0
 // Token Utilizzati con dettagli giocata (per sezione "Ultimi Token Utilizzati")
 app.get('/api/admin/used-tokens/:promotionId', authMiddleware_1.authenticateToken, (0, authMiddleware_1.authorizeRole)('admin'), async (req, res) => {
     const { promotionId } = req.params;
-    const { limit = 10 } = req.query;
+    const { page = 1, limit = 10 } = req.query;
     const pid = Number(promotionId);
+    const pageNum = Number(page);
+    const limitNum = Number(limit);
     try {
-        // Recupera i token utilizzati con tutte le info correlate
-        const usedTokens = await prisma.token.findMany({
-            where: {
-                promotion_id: pid,
-                status: 'used'
-            },
-            include: {
-                play: {
-                    include: {
-                        customer: {
-                            select: {
-                                first_name: true,
-                                last_name: true,
-                                phone_number: true
-                            }
-                        },
-                        prize_assignment: {
-                            include: {
-                                prize_type: {
-                                    select: {
-                                        name: true
+        // Query per il conteggio totale e i dati in parallelo
+        const whereClause = {
+            promotion_id: pid,
+            status: 'used'
+        };
+        const [usedTokens, total] = await Promise.all([
+            prisma.token.findMany({
+                where: whereClause,
+                include: {
+                    play: {
+                        include: {
+                            customer: {
+                                select: {
+                                    first_name: true,
+                                    last_name: true,
+                                    phone_number: true
+                                }
+                            },
+                            prize_assignment: {
+                                include: {
+                                    prize_type: {
+                                        select: {
+                                            name: true
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
-            },
-            orderBy: { used_at: 'desc' },
-            take: Number(limit)
-        });
+                },
+                orderBy: { used_at: 'desc' },
+                take: limitNum,
+                skip: (pageNum - 1) * limitNum
+            }),
+            prisma.token.count({ where: whereClause })
+        ]);
         // Formatta la risposta per il frontend
         const formatted = usedTokens.map(token => ({
             id: token.id,
@@ -518,12 +626,120 @@ app.get('/api/admin/used-tokens/:promotionId', authMiddleware_1.authenticateToke
         }));
         res.json({
             tokens: formatted,
-            total: formatted.length
+            total,
+            page: pageNum,
+            limit: limitNum,
+            totalPages: Math.ceil(total / limitNum)
         });
     }
     catch (err) {
         console.error('Errore fetch used tokens:', err);
         res.status(500).json({ error: 'Errore recupero token utilizzati' });
+    }
+});
+// Lista Clienti registrati per una promozione (Archivio Giocatori)
+app.get('/api/admin/customers/:promotionId', authMiddleware_1.authenticateToken, (0, authMiddleware_1.authorizeRole)('admin'), async (req, res) => {
+    const { promotionId } = req.params;
+    const { page = 1, limit = 20, search = '' } = req.query;
+    const pid = Number(promotionId);
+    const pageNum = Number(page);
+    const limitNum = Number(limit);
+    const searchStr = String(search).trim();
+    try {
+        // Costruisci il filtro where
+        const whereClause = {
+            promotion_id: pid
+        };
+        // Aggiungi filtro di ricerca se presente
+        if (searchStr) {
+            whereClause.OR = [
+                { first_name: { contains: searchStr, mode: 'insensitive' } },
+                { last_name: { contains: searchStr, mode: 'insensitive' } },
+                { phone_number: { contains: searchStr } }
+            ];
+        }
+        // Query per dati e conteggio in parallelo
+        const [customers, total] = await Promise.all([
+            prisma.customer.findMany({
+                where: whereClause,
+                select: {
+                    id: true,
+                    first_name: true,
+                    last_name: true,
+                    phone_number: true,
+                    total_plays: true,
+                    consent_marketing: true,
+                    created_at: true
+                },
+                orderBy: { created_at: 'desc' },
+                take: limitNum,
+                skip: (pageNum - 1) * limitNum
+            }),
+            prisma.customer.count({ where: whereClause })
+        ]);
+        // Formatta la risposta
+        const formatted = customers.map(c => ({
+            id: c.id,
+            firstName: c.first_name,
+            lastName: c.last_name,
+            phoneNumber: c.phone_number,
+            totalPlays: c.total_plays,
+            consentMarketing: c.consent_marketing,
+            registeredAt: c.created_at
+        }));
+        res.json({
+            customers: formatted,
+            total,
+            page: pageNum,
+            limit: limitNum,
+            totalPages: Math.ceil(total / limitNum)
+        });
+    }
+    catch (err) {
+        console.error('Errore fetch customers:', err);
+        res.status(500).json({ error: 'Errore recupero clienti' });
+    }
+});
+// Export CSV di tutti i clienti di una promozione
+app.get('/api/admin/customers/:promotionId/export', authMiddleware_1.authenticateToken, (0, authMiddleware_1.authorizeRole)('admin'), async (req, res) => {
+    const { promotionId } = req.params;
+    const pid = Number(promotionId);
+    try {
+        const customers = await prisma.customer.findMany({
+            where: { promotion_id: pid },
+            select: {
+                first_name: true,
+                last_name: true,
+                phone_number: true,
+                total_plays: true,
+                consent_marketing: true,
+                created_at: true
+            },
+            orderBy: { created_at: 'desc' }
+        });
+        // Genera CSV
+        const headers = ['Nome', 'Cognome', 'Telefono', 'Giocate Totali', 'Consenso Marketing', 'Data Registrazione'];
+        const rows = customers.map(c => [
+            c.first_name,
+            c.last_name,
+            c.phone_number,
+            c.total_plays.toString(),
+            c.consent_marketing ? 'Sì' : 'No',
+            new Date(c.created_at).toLocaleString('it-IT')
+        ]);
+        const csvContent = [
+            headers.join(';'),
+            ...rows.map(row => row.map(cell => `"${cell}"`).join(';'))
+        ].join('\n');
+        // BOM per Excel compatibility con caratteri italiani
+        const bom = '\uFEFF';
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename=archivio_giocatori_promo_${pid}.csv`);
+        res.send(bom + csvContent);
+    }
+    catch (err) {
+        console.error('Errore export customers:', err);
+        res.status(500).json({ error: 'Errore esportazione clienti' });
     }
 });
 // Reset Token - Elimina tutti i token e le giocate di una promozione
@@ -587,7 +803,7 @@ app.post('/api/admin/generate-tokens', authMiddleware_1.authenticateToken, (0, a
     try {
         const codesToCreate = [];
         for (let i = 0; i < count; i++) {
-            const code = (prefix || '') + Math.random().toString(36).substring(2, 8).toUpperCase();
+            const code = (prefix || '') + crypto_1.default.randomBytes(4).toString('hex').toUpperCase();
             codesToCreate.push({
                 promotion_id: Number(promotionId),
                 token_code: code,
@@ -622,8 +838,8 @@ app.post('/api/admin/generate-tokens', authMiddleware_1.authenticateToken, (0, a
         const START_X = (PAGE_W - CONTENT_W) / 2;
         const START_Y = (PAGE_H - CONTENT_H) / 2;
         // Paths risorse - Template predesegnati (in backend/assets per deploy)
-        const FRONT_TEMPLATE = path.join(__dirname, '../assets/fronte-token.png');
-        const BACK_TEMPLATE = path.join(__dirname, '../assets/retro-token.png');
+        const FRONT_TEMPLATE = path.join(__dirname, '../assets/fronte-token-v2.png');
+        const BACK_TEMPLATE = path.join(__dirname, '../assets/retro-token-v2.png');
         const FONT_CODE = path.join(__dirname, '../fonts/Roboto-Medium.ttf');
         // Funzione: Disegna pagina Retro (colonne specchiate per stampa fronte/retro)
         const drawBackPage = (cardCount) => {
@@ -745,8 +961,8 @@ app.get('/api/admin/tokens/pdf/:promotionId', authMiddleware_1.authenticateToken
         const START_X = (PAGE_W - CONTENT_W) / 2;
         const START_Y = (PAGE_H - CONTENT_H) / 2;
         // Paths risorse - Template predesegnati (in backend/assets per deploy)
-        const FRONT_TEMPLATE = path.join(__dirname, '../assets/fronte-token.png');
-        const BACK_TEMPLATE = path.join(__dirname, '../assets/retro-token.png');
+        const FRONT_TEMPLATE = path.join(__dirname, '../assets/fronte-token-v2.png');
+        const BACK_TEMPLATE = path.join(__dirname, '../assets/retro-token-v2.png');
         const FONT_CODE = path.join(__dirname, '../fonts/Roboto-Medium.ttf');
         // Funzione: Disegna pagina Retro (colonne specchiate per stampa fronte/retro)
         const drawBackPage = (cardCount) => {
@@ -863,6 +1079,35 @@ app.get('/api/customer/validate-token/:code', async (req, res) => {
         res.status(500).json({ error: 'Server error' });
     }
 });
+// Debug Token Info (per verificare date promozione)
+app.get('/api/debug/token/:code', async (req, res) => {
+    const { code } = req.params;
+    try {
+        const token = await prisma.token.findUnique({
+            where: { token_code: code },
+            include: { promotion: true }
+        });
+        if (!token)
+            return res.status(404).json({ error: 'Token non trovato' });
+        const now = new Date();
+        res.json({
+            token_code: token.token_code,
+            status: token.status,
+            promotion_id: token.promotion_id,
+            promotion_name: token.promotion.name,
+            promotion_status: token.promotion.status,
+            start_datetime: token.promotion.start_datetime,
+            end_datetime: token.promotion.end_datetime,
+            current_time: now,
+            is_before_start: now < token.promotion.start_datetime,
+            is_after_end: now > token.promotion.end_datetime,
+            is_active: now >= token.promotion.start_datetime && now <= token.promotion.end_datetime
+        });
+    }
+    catch (err) {
+        res.status(500).json({ error: 'Server error' });
+    }
+});
 // Check Phone - Verifica se un numero di telefono è già registrato
 app.post('/api/customer/check-phone', async (req, res) => {
     const { promotionId, phoneNumber } = req.body;
@@ -904,7 +1149,7 @@ app.post('/api/customer/check-phone', async (req, res) => {
     }
 });
 // Register
-app.post('/api/customer/register', async (req, res) => {
+app.post('/api/customer/register', registrationLimiter, async (req, res) => {
     const { promotionId, firstName, lastName, phoneNumber, consentMarketing, consentTerms } = req.body;
     if (!promotionId || !firstName || !lastName || !phoneNumber) {
         return res.status(400).json({ error: 'Missing fields' });
@@ -966,7 +1211,7 @@ app.post('/api/customer/register', async (req, res) => {
     }
 });
 // Play - PROTETTO DA AUTENTICAZIONE
-app.post('/api/customer/play', authMiddleware_1.authenticateCustomer, async (req, res) => {
+app.post('/api/customer/play', playLimiter, authMiddleware_1.authenticateCustomer, async (req, res) => {
     const { promotion_id, token_code } = req.body;
     // SICUREZZA: Usa il customer_id dal token JWT, NON dal body della richiesta!
     const customer_id = req.customer.customerId;
@@ -1096,7 +1341,9 @@ app.get('/api/promotions/public/:promotionId', async (req, res) => {
             where: { id: Number(promotionId) },
             select: {
                 name: true,
-                status: true
+                status: true,
+                start_datetime: true,
+                end_datetime: true
             }
         });
         if (!promotion) {

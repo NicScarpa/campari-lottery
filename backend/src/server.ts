@@ -1223,6 +1223,36 @@ app.get('/api/customer/validate-token/:code', async (req, res) => {
   }
 });
 
+// Debug Token Info (per verificare date promozione)
+app.get('/api/debug/token/:code', async (req, res) => {
+  const { code } = req.params;
+  try {
+    const token = await prisma.token.findUnique({
+      where: { token_code: code },
+      include: { promotion: true }
+    });
+
+    if (!token) return res.status(404).json({ error: 'Token non trovato' });
+
+    const now = new Date();
+    res.json({
+      token_code: token.token_code,
+      status: token.status,
+      promotion_id: token.promotion_id,
+      promotion_name: token.promotion.name,
+      promotion_status: token.promotion.status,
+      start_datetime: token.promotion.start_datetime,
+      end_datetime: token.promotion.end_datetime,
+      current_time: now,
+      is_before_start: now < token.promotion.start_datetime,
+      is_after_end: now > token.promotion.end_datetime,
+      is_active: now >= token.promotion.start_datetime && now <= token.promotion.end_datetime
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Check Phone - Verifica se un numero di telefono è già registrato
 app.post('/api/customer/check-phone', async (req, res) => {
   const { promotionId, phoneNumber } = req.body;
@@ -1481,7 +1511,9 @@ app.get('/api/promotions/public/:promotionId', async (req, res) => {
       where: { id: Number(promotionId) },
       select: {
         name: true,
-        status: true
+        status: true,
+        start_datetime: true,
+        end_datetime: true
       }
     });
 
