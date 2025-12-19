@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Josefin_Sans } from "next/font/google";
 import "./globals.css";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { GoogleTagManagerHead, GoogleTagManagerBody } from "./components/GoogleTagManager";
 
 const josefin = Josefin_Sans({
   subsets: ["latin"],
@@ -21,6 +22,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="it">
+      <head>
+        <GoogleTagManagerHead />
+      </head>
       {/* suppressHydrationWarning è necessario perché alcune estensioni browser
         (come ColorZilla o Password Manager) iniettano attributi nel body,
         causando falsi positivi negli errori di Next.js.
@@ -29,6 +33,7 @@ export default function RootLayout({
         className={`${josefin.className} antialiased`}
         suppressHydrationWarning={true}
       >
+        <GoogleTagManagerBody />
         <ErrorBoundary>
           {children}
         </ErrorBoundary>
