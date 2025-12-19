@@ -14,6 +14,9 @@ const josefin = Josefin_Sans({
 export const metadata: Metadata = {
   title: "Campari Soda Instant Win",
   description: "Concorso a premi Campari Soda - Weiss Café - v0.2.5",
+  other: {
+    "facebook-domain-verification": "5fmwtd3fsaydzwmodnrm8avc3cc6wy",
+  },
 };
 
 export default function RootLayout({
