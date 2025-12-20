@@ -51,13 +51,14 @@ model PrizeType {
   id                      Int      @id @default(autoincrement())
   promotion_id            Int
   promotion               Promotion @relation(fields: [promotion_id], references: [id])
-  
+
   name                    String
   description             String?
   initial_stock           Int
   remaining_stock         Int
   target_overall_probability Float? // e.g. 0.02 for 2%
-  
+  gender_restriction      String?  // 'F' = solo donne, 'M' = solo uomini, null = tutti
+
   assignments             PrizeAssignment[]
 }
 
@@ -114,25 +115,28 @@ model Customer {
   id                  Int       @id @default(autoincrement())
   promotion_id        Int
   promotion           Promotion @relation(fields: [promotion_id], references: [id])
-  
+
   first_name          String
   last_name           String
   phone_number        String
-  
+
   total_plays         Int       @default(0)
-  
+  total_wins          Int       @default(0)    // Contatore vittorie totali
+  last_win_at         DateTime?                // Timestamp ultima vittoria
+  detected_gender     String?                  // 'F', 'M', 'U'
+
   // Consents
   consent_marketing   Boolean   @default(false)
   consent_terms       Boolean   @default(false)
-  marketing_consent_at DateTime? 
-  terms_consent_at     DateTime? 
+  marketing_consent_at DateTime?
+  terms_consent_at     DateTime?
 
   created_at          DateTime  @default(now())
   updated_at          DateTime  @updatedAt
 
   plays               Play[]
   prize_assignments   PrizeAssignment[]
-  final_rank          FinalLeaderboard[] 
+  final_rank          FinalLeaderboard[]
 
   @@unique([promotion_id, phone_number]) // Unico utente per promozione
 }

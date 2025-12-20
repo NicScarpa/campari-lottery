@@ -3,7 +3,8 @@ import cors from 'cors';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
 import { PrismaClient, Prisma } from '@prisma/client';
-import { ProbabilityEngine } from './services/ProbabilityEngine';
+import { probabilityEngine, PrizeConfig } from './services/ProbabilityEngine';
+import { detectGender } from './utils/genderDetection';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import cookieParser from 'cookie-parser';
@@ -1501,6 +1502,9 @@ app.post('/api/customer/register', registrationLimiter, async (req, res) => {
 
   const sanitizedPhone = sanitizePhoneNumber(phoneNumber);
 
+  // Rileva genere dal nome
+  const genderResult = detectGender(firstName);
+
   try {
     const customer = await prisma.customer.upsert({
       where: {
@@ -1512,6 +1516,7 @@ app.post('/api/customer/register', registrationLimiter, async (req, res) => {
       update: {
         first_name: firstName,
         last_name: lastName,
+        detected_gender: genderResult.gender,
         consent_marketing: consentMarketing,
         marketing_consent_at: consentMarketing ? new Date() : undefined,
         consent_terms: consentTerms,
@@ -1522,6 +1527,7 @@ app.post('/api/customer/register', registrationLimiter, async (req, res) => {
         first_name: firstName,
         last_name: lastName,
         phone_number: sanitizedPhone,
+        detected_gender: genderResult.gender,
         consent_marketing: consentMarketing || false,
         consent_terms: consentTerms || false,
         marketing_consent_at: consentMarketing ? new Date() : null,
@@ -1590,17 +1596,47 @@ app.post('/api/customer/play', playLimiter, authenticateCustomer, async (req: Au
         where: { promotion_id: promotionId }
       });
 
-      const engine = new ProbabilityEngine();
-      const wonPrizeType = engine.determineOutcome({
+      // Recupera statistiche customer per fatigue factor
+      const customerStats = await tx.customer.findUnique({
+        where: { id: customer_id },
+        select: {
+          first_name: true,
+          total_plays: true,
+          total_wins: true,
+          detected_gender: true
+        }
+      });
+
+      if (!customerStats) throw new Error('CUSTOMER_NOT_FOUND');
+
+      // Conta premi gia' assegnati in questa promozione (per pacing)
+      const prizesAssignedTotal = await tx.prizeAssignment.count({
+        where: { promotion_id: promotionId }
+      });
+
+      // Prepara input per il nuovo engine v2.0
+      const engineInput = {
         totalTokens,
         usedTokens,
         prizeTypes: prizeTypes.map(p => ({
           id: p.id,
+          name: p.name,
           initialStock: p.initial_stock,
           remainingStock: p.remaining_stock,
-          targetProbability: p.target_overall_probability || 0
-        }))
-      });
+          genderRestriction: p.gender_restriction
+        })),
+        customer: {
+          firstName: customerStats.first_name,
+          totalPlays: customerStats.total_plays,
+          totalWins: customerStats.total_wins,
+          detectedGender: customerStats.detected_gender
+        },
+        prizesAssignedTotal
+      };
+
+      // Esegui estrazione con engine v2.0
+      const outcome = probabilityEngine.determineOutcome(engineInput);
+      const wonPrizeType = outcome.winner ? outcome.prize : null;
 
       let prizeAssignment = null;
       let isWinner = false;
@@ -1672,9 +1708,17 @@ app.post('/api/customer/play', playLimiter, authenticateCustomer, async (req: Au
         }
       });
 
+      // Aggiorna statistiche customer
       await tx.customer.update({
         where: { id: customer_id },
-        data: { total_plays: { increment: 1 } }
+        data: {
+          total_plays: { increment: 1 },
+          // Se ha vinto, incrementa anche total_wins e last_win_at
+          ...(isWinner && {
+            total_wins: { increment: 1 },
+            last_win_at: new Date()
+          })
+        }
       });
 
       return { isWinner, prizeAssignment };
@@ -1687,6 +1731,7 @@ app.post('/api/customer/play', playLimiter, authenticateCustomer, async (req: Au
     if (err.message === 'TOKEN_NOT_FOUND') return res.status(404).json({ error: 'Token not found' });
     if (err.message === 'TOKEN_USED') return res.status(400).json({ error: 'Token already used' });
     if (err.message === 'TOKEN_MISMATCH') return res.status(400).json({ error: 'Token does not belong to this promotion' });
+    if (err.message === 'CUSTOMER_NOT_FOUND') return res.status(404).json({ error: 'Customer not found' });
     res.status(500).json({ error: 'Transaction failed' });
   }
 });
