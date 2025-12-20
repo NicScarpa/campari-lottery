@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { ProbabilityEngine } from './services/ProbabilityEngine';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
@@ -604,6 +604,146 @@ app.get('/api/admin/stats/:promotionId', authenticateToken, authorizeRole('admin
     });
   } catch (err) {
     res.status(500).json({ error: 'Errore statistiche' });
+  }
+});
+
+// Revenue Stats endpoint
+const SALE_PRICE = 3.00;  // Prezzo vendita Campari Soda
+const UNIT_COST = 0.84;   // Costo acquisto
+
+app.get('/api/admin/revenue/:promotionId', authenticateToken, authorizeRole('admin'), async (req, res) => {
+  const { promotionId } = req.params;
+  const { date } = req.query; // Opzionale: filtra per giorno specifico
+  const pid = Number(promotionId);
+
+  try {
+    // 1. Recupera info promozione per date inizio/fine
+    const promotion = await prisma.promotion.findUnique({
+      where: { id: pid },
+      select: { start_datetime: true, end_datetime: true }
+    });
+
+    if (!promotion) {
+      return res.status(404).json({ error: 'Promozione non trovata' });
+    }
+
+    // 2. Costruisci filtro date
+    const dateFilter: { used_at?: { gte?: Date; lte?: Date } } = {};
+    if (date) {
+      // Filtra per giorno specifico
+      const dayStart = new Date(date as string);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(date as string);
+      dayEnd.setHours(23, 59, 59, 999);
+      dateFilter.used_at = { gte: dayStart, lte: dayEnd };
+    }
+
+    // 3. Conteggio totale token utilizzati
+    const unitsSold = await prisma.token.count({
+      where: {
+        promotion_id: pid,
+        status: 'used',
+        ...dateFilter
+      }
+    });
+
+    // 4. Calcoli finanziari
+    const totalRevenue = unitsSold * SALE_PRICE;
+    const totalCost = unitsSold * UNIT_COST;
+    const grossMargin = totalRevenue - totalCost;
+    const marginPercentage = totalRevenue > 0 ? (grossMargin / totalRevenue) * 100 : 0;
+
+    // 5. Aggregazione giornaliera - usando Prisma invece di raw SQL per compatibilità SQLite/PostgreSQL
+    const usedTokens = await prisma.token.findMany({
+      where: {
+        promotion_id: pid,
+        status: 'used',
+        used_at: { not: null }
+      },
+      select: { used_at: true }
+    });
+
+    // Raggruppa per data manualmente
+    const dailyMap = new Map<string, number>();
+    usedTokens.forEach(token => {
+      if (token.used_at) {
+        const dateKey = token.used_at.toISOString().split('T')[0];
+        dailyMap.set(dateKey, (dailyMap.get(dateKey) || 0) + 1);
+      }
+    });
+
+    // Converti in array ordinato
+    const dailySalesRaw = Array.from(dailyMap.entries())
+      .map(([date, units]) => ({ date, units }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    // Calcola variazione rispetto al giorno precedente
+    const dailySales = dailySalesRaw.map((day, index) => {
+      const units = day.units;
+      const revenue = units * SALE_PRICE;
+      let vsYesterday: number | null = null;
+
+      if (index > 0) {
+        const yesterdayUnits = dailySalesRaw[index - 1].units;
+        if (yesterdayUnits > 0) {
+          vsYesterday = ((units - yesterdayUnits) / yesterdayUnits) * 100;
+        }
+      }
+
+      return {
+        date: day.date,
+        units,
+        revenue,
+        vsYesterday
+      };
+    });
+
+    // 6. Media giornaliera (solo giorni con vendite)
+    const daysWithSales = dailySales.length;
+    const dailyAverage = daysWithSales > 0 ? unitsSold / daysWithSales : 0;
+    const dailyAverageRevenue = daysWithSales > 0 ? totalRevenue / daysWithSales : 0;
+
+    // 7. Distribuzione oraria - raggruppa per ora manualmente
+    const hourlyMap = new Map<number, number>();
+
+    // Filtra per data se specificata
+    const tokensForHourly = date
+      ? usedTokens.filter(t => t.used_at && t.used_at.toISOString().split('T')[0] === date)
+      : usedTokens;
+
+    tokensForHourly.forEach(token => {
+      if (token.used_at) {
+        const hour = token.used_at.getHours();
+        hourlyMap.set(hour, (hourlyMap.get(hour) || 0) + 1);
+      }
+    });
+
+    // Crea array completo 0-23 ore
+    const hourlyDistribution = Array.from({ length: 24 }, (_, i) => ({
+      hour: i,
+      count: hourlyMap.get(i) || 0
+    }));
+
+    res.json({
+      summary: {
+        unitsSold,
+        totalRevenue,
+        totalCost,
+        grossMargin,
+        marginPercentage,
+        dailyAverage,
+        dailyAverageRevenue
+      },
+      dailySales,
+      hourlyDistribution,
+      promotion: {
+        startDate: promotion.start_datetime.toISOString(),
+        endDate: promotion.end_datetime.toISOString()
+      }
+    });
+  } catch (err) {
+    console.error('Errore revenue stats:', err);
+    res.status(500).json({ error: 'Errore nel calcolo revenue' });
   }
 });
 

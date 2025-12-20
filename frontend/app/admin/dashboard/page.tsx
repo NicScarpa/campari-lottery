@@ -14,6 +14,7 @@ import PlayersArchive from './components/PlayersArchive';
 import PrizeOverview from './components/PrizeOverview';
 import Sidebar from './components/Sidebar';
 import AdminLeaderboard from './components/AdminLeaderboard';
+import RevenueStats from './components/RevenueStats';
 import { getApiUrl } from '../../lib/api'; // <--- IMPORTANTE
 
 export interface Promotion {
@@ -313,6 +314,12 @@ export default function AdminDashboardPage() {
                         {/* VIEW: DASHBOARD */}
                         {currentView === 'dashboard' && (
                             <>
+                                {/* Revenue Stats - Full Width (Prima sezione) */}
+                                <RevenueStats
+                                    promotionId={currentPromotion.id}
+                                    refreshKey={dataRefreshKey}
+                                />
+
                                 {/* Prize Overview - Full Width */}
                                 <PrizeOverview
                                     promotionId={currentPromotion.id}
