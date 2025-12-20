@@ -15,8 +15,16 @@ export const metadata: Metadata = {
   title: "Campari Soda Instant Win",
   description: "Concorso a premi Campari Soda - Weiss Café - v0.2.5",
   icons: {
-    icon: "/bottiglia.png",
-    apple: "/bottiglia.png",
+    icon: [
+      { url: "/favicon/favicon.ico", sizes: "any" },
+      { url: "/favicon/favicon-96x96.png", sizes: "96x96", type: "image/png" },
+      { url: "/favicon/favicon.svg", type: "image/svg+xml" },
+    ],
+    apple: { url: "/favicon/apple-touch-icon.png", sizes: "180x180" },
+  },
+  manifest: "/favicon/site.webmanifest",
+  appleWebApp: {
+    title: "Campari Soda",
   },
   other: {
     "facebook-domain-verification": "5fmwtd3fsaydzwmodnrm8avc3cc6wy",
