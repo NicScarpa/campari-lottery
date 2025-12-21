@@ -2,8 +2,18 @@
 
 import { useState } from 'react';
 import React from 'react';
-import { Promotion } from '../page'; 
+import { Promotion } from '../page';
 import { getApiUrl } from '../../../lib/api'; // <--- IMPORTANTE
+
+// Helper function: formatta data in ora locale per input datetime-local
+function toLocalDatetimeString(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
 
 interface PromotionSelectorProps {
     promotions: Promotion[];
@@ -38,13 +48,13 @@ export default function PromotionSelector({
     const [status, setStatus] = useState(currentPromotion.status);
     const [startDatetime, setStartDatetime] = useState(() => {
         if (currentPromotion.start_datetime) {
-            return new Date(currentPromotion.start_datetime).toISOString().slice(0, 16);
+            return toLocalDatetimeString(new Date(currentPromotion.start_datetime));
         }
         return '';
     });
     const [endDatetime, setEndDatetime] = useState(() => {
         if (currentPromotion.end_datetime) {
-            return new Date(currentPromotion.end_datetime).toISOString().slice(0, 16);
+            return toLocalDatetimeString(new Date(currentPromotion.end_datetime));
         }
         return '';
     });
@@ -56,10 +66,9 @@ export default function PromotionSelector({
     // Stati per la creazione
     const [newName, setNewName] = useState('');
     const [newPlannedTokenCount, setNewPlannedTokenCount] = useState(100);
-    // Default: data/ora attuale per inizio
+    // Default: data/ora attuale per inizio (ora locale)
     const [newStartDatetime, setNewStartDatetime] = useState(() => {
-        const now = new Date();
-        return now.toISOString().slice(0, 16); // Formato datetime-local: YYYY-MM-DDTHH:mm
+        return toLocalDatetimeString(new Date());
     });
     const [newEndDatetime, setNewEndDatetime] = useState('');
 
@@ -68,10 +77,10 @@ export default function PromotionSelector({
         setPlannedTokenCount(currentPromotion.planned_token_count);
         setStatus(currentPromotion.status);
         if (currentPromotion.start_datetime) {
-            setStartDatetime(new Date(currentPromotion.start_datetime).toISOString().slice(0, 16));
+            setStartDatetime(toLocalDatetimeString(new Date(currentPromotion.start_datetime)));
         }
         if (currentPromotion.end_datetime) {
-            setEndDatetime(new Date(currentPromotion.end_datetime).toISOString().slice(0, 16));
+            setEndDatetime(toLocalDatetimeString(new Date(currentPromotion.end_datetime)));
         }
         setIsEditing(false);
         setIsCreating(false);
