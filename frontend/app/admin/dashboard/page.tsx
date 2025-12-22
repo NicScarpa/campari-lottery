@@ -13,9 +13,9 @@ import PlayLogViewer from './components/PlayLogViewer';
 import PlayersArchive from './components/PlayersArchive';
 import PrizeOverview from './components/PrizeOverview';
 import Sidebar from './components/Sidebar';
+import TopNav from './components/TopNav';
 import AdminLeaderboard from './components/AdminLeaderboard';
 import RevenueStats from './components/RevenueStats';
-import TopNav from './components/TopNav';
 import StatsHeader from './components/StatsHeader';
 import { getApiUrl } from '../../lib/api';
 
@@ -274,7 +274,14 @@ export default function AdminDashboardPage() {
             <div className="fixed top-[-10%] right-[-10%] w-[1000px] h-[1000px] bg-[#b42a28]/5 rounded-full blur-[150px] animate-pulse pointer-events-none"></div>
             <div className="fixed bottom-[-5%] left-[-5%] w-[800px] h-[800px] bg-white rounded-full blur-[150px] pointer-events-none"></div>
 
-            {/* Mobile Sidebar Component (only renders on mobile) */}
+            {/* TopNav - Only visible on desktop */}
+            <TopNav
+                currentView={currentView}
+                onChangeView={setCurrentView}
+                onLogout={handleLogout}
+            />
+
+            {/* Sidebar Component (visible only on mobile) */}
             <Sidebar
                 currentView={currentView}
                 onChangeView={setCurrentView}
@@ -287,12 +294,6 @@ export default function AdminDashboardPage() {
 
             {/* Main Content */}
             <div className="relative z-10 max-w-[1680px] mx-auto pb-16">
-                {/* Desktop Top Navigation */}
-                <TopNav
-                    currentView={currentView}
-                    onChangeView={setCurrentView}
-                    onLogout={handleLogout}
-                />
 
                 {/* Mobile Sub-header with promotion selector */}
                 <div className="md:hidden bg-white/70 backdrop-blur-md sticky top-14 z-20 px-4 py-3 border-b border-white/30">
